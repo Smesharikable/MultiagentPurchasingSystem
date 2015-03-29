@@ -1,8 +1,9 @@
-package study.masystems.purchasingsystem;
+package study.masystems.purchasingsystem.agents;
 
 import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
+import jade.core.behaviours.Behaviour;
 import jade.core.behaviours.OneShotBehaviour;
 import jade.core.behaviours.WakerBehaviour;
 import jade.domain.DFService;
@@ -12,7 +13,8 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
-import study.masystems.purchasingsystem.defaultvalues.DefaultGoods;
+import study.masystems.purchasingsystem.GoodNeed;
+import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -27,9 +29,12 @@ public class Customer extends Agent {
     private ACLMessage subscriptionMessage;
     private List<AID> suppliers = new ArrayList<AID>();
 
-    private List<String> goodNeeds;
+    private double money;
+    private List<GoodNeed> goodNeeds;
     private String goodNeedsJSON;
     private long waitForSupplier;
+
+
 
     @Override
     protected void setup() {
@@ -60,22 +65,23 @@ public class Customer extends Agent {
             }
         });
 
-        addBehaviour(new WaitforSupplier(this, waitForSupplier));
+        addBehaviour(new WaitForSuppliers(this, waitForSupplier));
     }
 
     private void initialization() {
         //TODO: replace with GUI initialization.
-        goodNeeds = DefaultGoods.getRandomGoods();
+        money = DataGenerator.getRandomMoneyAmount();
+        goodNeeds = DataGenerator.getRandomGoodNeeds();
         goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
-        waitForSupplier = DefaultGoods.randLong(10000, 60000);
+        waitForSupplier = DataGenerator.randLong(10000, 60000);
     }
 
-    private class WaitforSupplier extends WakerBehaviour {
-        public WaitforSupplier(Agent a, Date wakeupDate) {
+    private class WaitForSuppliers extends WakerBehaviour {
+        public WaitForSuppliers(Agent a, Date wakeupDate) {
             super(a, wakeupDate);
         }
 
-        public WaitforSupplier(Agent a, long timeout) {
+        public WaitForSuppliers(Agent a, long timeout) {
             super(a, timeout);
         }
 
@@ -99,7 +105,7 @@ public class Customer extends Agent {
     }
 
     private class SendCFP extends OneShotBehaviour {
-        private MessageTemplate mt; // The template to receive replies
+        private MessageTemplate proposal; // The template to receive replies
 
         @Override
         public void action() {
@@ -113,8 +119,44 @@ public class Customer extends Agent {
             cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
             myAgent.send(cfp);
             // Prepare the template to get proposals
-            mt = MessageTemplate.and(MessageTemplate.MatchConversationId("book-trade"),
+            proposal = MessageTemplate.and(MessageTemplate.MatchConversationId("book-trade"),
                     MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
+        }
+    }
+
+    private class ReceiveSupplierProposals extends Behaviour{
+        private MessageTemplate proposalTemplate;
+        private int repliesCnt = 0;
+        private boolean allReplies = false;
+
+        public ReceiveSupplierProposals(MessageTemplate proposalTemplate) {
+            super();
+            this.proposalTemplate = proposalTemplate;
+        }
+
+        @Override
+        public void action() {
+            // Receive all proposals/refusals from suppliers agents
+            ACLMessage reply = myAgent.receive(proposalTemplate);
+            if (reply != null) {
+                // Reply received
+                if (reply.getPerformative() == ACLMessage.PROPOSE) {
+                    // This is an offer
+                    int price = Integer.parseInt(reply.getContent());
+
+                    //TODO: Add needs check.
+                }
+                repliesCnt++;
+                allReplies = (repliesCnt >= suppliers.size());
+            }
+            else {
+                block();
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return false;
         }
     }
 

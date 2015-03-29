@@ -1,4 +1,4 @@
-package study.masystems.purchasingsystem;
+package study.masystems.purchasingsystem.agents;
 
 import flexjson.JSONDeserializer;
 import flexjson.JSONSerializer;
@@ -10,7 +10,8 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
-import study.masystems.purchasingsystem.defaultvalues.DefaultGoods;
+import study.masystems.purchasingsystem.GoodInfo;
+import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,7 +26,7 @@ public class Supplier extends Agent {
 
     @Override
     protected void setup() {
-        goods = DefaultGoods.getRandomGoodsTable();
+        goods = DataGenerator.getRandomGoodsTable();
 
         // Register the supplier service in the yellow pages
         DFAgentDescription dfd = new DFAgentDescription();

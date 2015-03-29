@@ -1,4 +1,4 @@
-package study.masystems.purchasingsystem;
+package study.masystems.purchasingsystem.agents;
 
 import sun.management.Agent;
 
