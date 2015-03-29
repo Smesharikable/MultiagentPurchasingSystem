@@ -4,17 +4,16 @@ package study.masystems.purchasingsystem;
  * Information about good.
  */
 public class GoodInfo {
-    private int minimumOrderSize;
-    private Double cost;
-    private int deliveryTimeDays;
+    private Double cost = 0.0;
+    private int minimumOrderSize = 0;
+    private int deliveryTimeDays = 0;
 
     public GoodInfo() {
-        this(0, 0.0, 0);
     }
 
-    public GoodInfo(int minimumOrderSize, Double cost, int deliveryTimeDays) {
-        this.minimumOrderSize = minimumOrderSize;
+    public GoodInfo(Double cost, int minimumOrderSize, int deliveryTimeDays) {
         this.cost = cost;
+        this.minimumOrderSize = minimumOrderSize;
         this.deliveryTimeDays = deliveryTimeDays;
     }
 
