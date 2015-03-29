@@ -1,5 +1,6 @@
 package study.masystems.purchasingsystem.agents;
 
+import flexjson.JSONDeserializer;
 import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
@@ -13,12 +14,11 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
+import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 /**
  * Initiator of procurement.
@@ -30,11 +30,11 @@ public class Customer extends Agent {
     private List<AID> suppliers = new ArrayList<AID>();
 
     private double money;
-    private List<GoodNeed> goodNeeds;
+    private Map<String, GoodNeed> goodNeeds;
     private String goodNeedsJSON;
     private long waitForSupplier;
 
-
+    private Purchase purchase = new Purchase();
 
     @Override
     protected void setup() {
@@ -115,11 +115,11 @@ public class Customer extends Agent {
                 cfp.addReceiver(supplier);
             }
             cfp.setContent(goodNeedsJSON);
-            cfp.setConversationId("book-trade");
+            cfp.setConversationId("wholesale-purchase");
             cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
             myAgent.send(cfp);
             // Prepare the template to get proposals
-            proposal = MessageTemplate.and(MessageTemplate.MatchConversationId("book-trade"),
+            proposal = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
                     MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
         }
     }
@@ -129,6 +129,7 @@ public class Customer extends Agent {
         private int repliesCnt = 0;
         private boolean allReplies = false;
 
+        //TODO: Add time restriction.
         public ReceiveSupplierProposals(MessageTemplate proposalTemplate) {
             super();
             this.proposalTemplate = proposalTemplate;
@@ -142,9 +143,12 @@ public class Customer extends Agent {
                 // Reply received
                 if (reply.getPerformative() == ACLMessage.PROPOSE) {
                     // This is an offer
-                    int price = Integer.parseInt(reply.getContent());
-
+                    HashMap<String, PurchaseProposal> goodsInfo =
+                            new JSONDeserializer<HashMap<String, PurchaseProposal>>().deserialize(reply.getContent());
                     //TODO: Add needs check.
+                    for (Map.Entry<String, PurchaseProposal> entry: goodsInfo.entrySet()) {
+                        purchase.addProposal(entry.getKey(), entry.getValue());
+                    }
                 }
                 repliesCnt++;
                 allReplies = (repliesCnt >= suppliers.size());
@@ -156,7 +160,7 @@ public class Customer extends Agent {
 
         @Override
         public boolean done() {
-            return false;
+            return allReplies;
         }
     }
 
@@ -165,4 +169,40 @@ public class Customer extends Agent {
         super.takeDown();
         System.out.print(String.format("Customer %s terminate.", getAID().getName()));
     }
+
+    private class Purchase {
+        Map<String, PurchaseProposal> purchaseTable;
+
+        public Purchase() {
+        }
+
+        public void addProposal(String name, PurchaseProposal newProposal) {
+            GoodNeed goodNeed = goodNeeds.get(name);
+
+            int deliveryPeriod = goodNeed.getDeliveryPeriodDays();
+            if (deliveryPeriod < newProposal.getDeliveryPeriodDays()) {
+                return;
+            }
+
+            PurchaseProposal oldProposal = purchaseTable.get(name);
+            if (oldProposal == null) {
+                purchaseTable.put(name, newProposal);
+            } else {
+                if (compareProposal(oldProposal, newProposal) < 0) {
+                    purchaseTable.put(name, newProposal);
+                }
+            }
+        }
+
+        public int compareProposal(PurchaseProposal left, PurchaseProposal right) {
+            if (left.getCost() < right.getCost()) {
+                return 1;
+            }
+            if (left.getCost() > right.getCost()) {
+                return -1;
+            }
+            return 0;
+        }
+    }
+
 }

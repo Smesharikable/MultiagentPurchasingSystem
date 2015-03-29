@@ -10,7 +10,7 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
-import study.masystems.purchasingsystem.GoodInfo;
+import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
 
 import java.util.ArrayList;
@@ -22,11 +22,11 @@ import java.util.List;
  */
 public class Supplier extends Agent {
 
-    private HashMap<String, GoodInfo> goods;
+    private HashMap<String, PurchaseProposal> goods;
 
     @Override
     protected void setup() {
-        goods = DataGenerator.getRandomGoodsTable();
+        goods = DataGenerator.getRandomGoodsTable(this.getAID());
 
         // Register the supplier service in the yellow pages
         DFAgentDescription dfd = new DFAgentDescription();
@@ -54,7 +54,7 @@ public class Supplier extends Agent {
                 // CFP Message received. Process it
                 List<String> goodsRequest = new JSONDeserializer<ArrayList<String>>().deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
-                HashMap<String, GoodInfo> requestedGoods = new HashMap<String, GoodInfo>();
+                HashMap<String, PurchaseProposal> requestedGoods = new HashMap<String, PurchaseProposal>();
 
                 for (String good : goodsRequest){
                     if (goods.containsKey(good)) {

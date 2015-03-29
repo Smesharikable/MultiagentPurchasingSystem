@@ -5,6 +5,7 @@ import java.util.Map;
 
 /**
  * Purchase information for Buyer.
+ * TODO: Rename to TermOfPurchase.
  */
 public class PurchaseInfo {
 

@@ -1,6 +1,7 @@
 package study.masystems.purchasingsystem.defaultvalues;
 
-import study.masystems.purchasingsystem.GoodInfo;
+import jade.core.AID;
+import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.GoodNeed;
 
 import java.util.*;
@@ -14,8 +15,8 @@ public class DataGenerator {
         "pajamas", "suit", "socks", "skirt", "T-shirt", "purse", "jeans"
     };
 
-    private static int deliveryTimeMin = 0;
-    private static int deliveryTimeMax = 14;
+    private static int deliveryPeriodMin = 0;
+    private static int deliveryPeriodMax = 14;
 
     private static double costMin = 300;
     private static double costMax = 10000;
@@ -34,28 +35,28 @@ public class DataGenerator {
     public DataGenerator() {
     }
 
-    public static HashMap<String, GoodInfo> getRandomGoodsTable() {
-        HashMap<String, GoodInfo> goodsTable = new HashMap<String, GoodInfo>();
+    public static HashMap<String, PurchaseProposal> getRandomGoodsTable(AID supplier) {
+        HashMap<String, PurchaseProposal> goodsTable = new HashMap<String, PurchaseProposal>();
 
         List<String> selectedGoods = getRandomGoods();
-        int deliveryTime = getRandomDeliveryTime();
+        int deliveryTime = getRandomDeliveryPeriod();
 
         for (String good: selectedGoods) {
             int minQuantity = getRandomPurchaseQuantity();
             double price = getRandomCost();
-            goodsTable.put(good, new GoodInfo(price, minQuantity, deliveryTime));
+            goodsTable.put(good, new PurchaseProposal(supplier, price, minQuantity, deliveryTime));
         }
 
         return goodsTable;
     }
 
-    public static List<GoodNeed> getRandomGoodNeeds() {
-        ArrayList<GoodNeed> goodNeeds = new ArrayList<GoodNeed>();
+    public static Map<String, GoodNeed> getRandomGoodNeeds() {
+        Map<String, GoodNeed> goodNeeds = new HashMap<String, GoodNeed>();
         List<String> selectedGoods = getRandomGoods();
-        for (String s : selectedGoods) {
+        for (String name : selectedGoods) {
             int quantity = getRandomGoodQuantity();
-            int period = getRandomDeliveryTime();
-            goodNeeds.add(new GoodNeed(s, quantity, period));
+            int period = getRandomDeliveryPeriod();
+            goodNeeds.put(name, new GoodNeed(quantity, period));
         }
         return goodNeeds;
     }
@@ -75,8 +76,8 @@ public class DataGenerator {
         return randDouble(costMin, costMax);
     }
 
-    public static int getRandomDeliveryTime() {
-        return randInt(deliveryTimeMin, deliveryTimeMax);
+    public static int getRandomDeliveryPeriod() {
+        return randInt(deliveryPeriodMin, deliveryPeriodMax);
     }
 
     public static int getRandomPurchaseQuantity() {
