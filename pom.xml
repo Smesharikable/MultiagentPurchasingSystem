@@ -8,5 +8,19 @@
     <artifactId>purchasing-system</artifactId>
     <version>0.1</version>
 
-    
+    <repositories>
+        <repository>
+            <id>tilab</id>
+            <url>http://jade.tilab.com/maven/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.tilab.jade</groupId>
+            <artifactId>jade</artifactId>
+            <version>4.3.3</version>
+        </dependency>
+    </dependencies>
+
 </project>
