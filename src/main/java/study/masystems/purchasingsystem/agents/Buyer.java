@@ -16,16 +16,21 @@ import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
 
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Purchase participant, that wants to buy some goods.
  */
 public class Buyer extends Agent {
-    private List<GoodNeed> goodNeeds;
+    private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<PurchaseInfo>();
+
+    private Map<String, GoodNeed> goodNeeds;
     private double money;
     private String goodNeedsJSON;
     private AID[] customerAgents;
+
+    private ProposalTable proposalTable = new ProposalTable();
 
     @Override
     protected void setup() {
@@ -76,9 +81,8 @@ public class Buyer extends Agent {
     private class ChooseCustomer extends Behaviour {
         private MessageTemplate mt;
         private int step;
-        private double minPrice = 0;
-        private AID minPriceCustomer = null;
         private int repliesCnt;
+        private boolean allReceived = false;
 
         public ChooseCustomer() {
             repliesCnt = 0;
@@ -94,7 +98,6 @@ public class Buyer extends Agent {
                 ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
                 for (AID customer : customerAgents) {
                     //TODO: check purchase date and need time
-
                     cfp.addReceiver(customer);
                 }
 
@@ -112,36 +115,60 @@ public class Buyer extends Agent {
                 if(reply != null) {
                     if(reply.getPerformative() == ACLMessage.PROPOSE) {
                         //TODO: real prices check
-                        double price = new JSONDeserializer<PurchaseInfo>().deserialize(reply.getContent()).getGoodsPrice().get(goodNeeds.get(0).getName());
+                        PurchaseInfo purchaseInfo = jsonDeserializer.deserialize(reply.getContent());
+                        Map<String, Double> prices = purchaseInfo.getGoodsPrice();
 
-                        if(minPriceCustomer == null || price < minPrice) {
-                            minPrice = price;
-                            minPriceCustomer = reply.getSender();
+                        for (Map.Entry<String, Double> entry: prices.entrySet()) {
+                            String name = entry.getKey();
+                            if (purchaseInfo.getDeliveryPeriod() < goodNeeds.get(name).getDeliveryPeriodDays()) {
+                                proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue());
+                            }
                         }
+
                     }
 
-                    ++this.repliesCnt;
-                    if(this.repliesCnt >= customerAgents.length) {
-                        this.step = 2;
-                    }
+                    repliesCnt++;
+                    allReceived = (this.repliesCnt >= customerAgents.length);
                 } else {
                     this.block();
                 }
-                break;
-            case 2:
-                ACLMessage participate = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
-                participate.addReceiver(minPriceCustomer);
-                participate.setContent(goodNeedsJSON);
-                participate.setConversationId("participation");
-                participate.setReplyWith("paticiper " + System.currentTimeMillis());
-                myAgent.send(participate);
                 break;
             }
         }
 
         @Override
         public boolean done() {
-            return this.step == 2 && this.minPriceCustomer == null || this.step == 2;
+            return allReceived;
+        }
+    }
+
+    private class ProposalTable {
+        private Map<String, CustomerProposal> proposalMap = new HashMap<String, CustomerProposal>();
+
+        public ProposalTable() {
+        }
+
+        public void addCustomerProposal(AID customer, String name, double cost) {
+            CustomerProposal customerProposal = proposalMap.get(name);
+            if (customerProposal == null) {
+                proposalMap.put(name, new CustomerProposal(customer, cost));
+                return;
+            }
+
+            if (customerProposal.cost > cost) {
+                proposalMap.put(name, new CustomerProposal(customer, cost));
+            }
+        }
+
+    }
+
+    private class CustomerProposal {
+        private AID customer;
+        private double cost;
+
+        public CustomerProposal(AID customer, double cost) {
+            this.customer = customer;
+            this.cost = cost;
         }
     }
 }
