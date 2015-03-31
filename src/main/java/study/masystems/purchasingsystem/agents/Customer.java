@@ -18,7 +18,7 @@ import jade.proto.SubscriptionInitiator;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.GoodNeed;
-import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
+import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.*;
 
@@ -31,9 +31,8 @@ public class Customer extends Agent {
 
     FSMBehaviour startWholeSalePurchase;
 
-    private ACLMessage subscriptionMessage;
-    private MessageTemplate supplierProposalMT;
     private List<AID> suppliers = new ArrayList<AID>();
+    private ACLMessage subscriptionMessage;
 
     private double money;
     private Map<String, GoodNeed> goodNeeds;
@@ -77,24 +76,24 @@ public class Customer extends Agent {
 
         addBehaviour(new WaitForSuppliers(this, waitForSupplier));
 
-        startWholeSalePurchase = new FSMBehaviour() {
-            @Override
-            public int onEnd() {
-                myAgent.doDelete();
-                return super.onEnd();
-            }
-        };
-        startWholeSalePurchase.registerFirstState(new SendCFP(), "SendCFP");
-        startWholeSalePurchase.registerLastState(new FinalState(), "FinalState");
-        startWholeSalePurchase.registerState(new ReceiveSupplierProposals(supplierProposalMT), "ReceiveSupplierProposal");
-        startWholeSalePurchase.registerState(new RegisterPurchase(), "RegisterPurchase");
-        startWholeSalePurchase.registerState(new HandleBuyerCFP(), "HandleBuyerCFP");
-
-        startWholeSalePurchase.registerDefaultTransition("SendCFP", "ReceiverSupplierProposal");
-        startWholeSalePurchase.registerTransition("ReceiverSupplierProposal", "RegisterPurchase", NEXT_STEP);
-        startWholeSalePurchase.registerTransition("ReceiverSupplierProposal", "FinalState", ABORT);
-        startWholeSalePurchase.registerDefaultTransition("RegisterPurchase", "HandleBuyerCFP");
-        startWholeSalePurchase.registerDefaultTransition("HandleBuyerCFP", "FinalState");
+//        startWholeSalePurchase = new FSMBehaviour() {
+//            @Override
+//            public int onEnd() {
+//                myAgent.doDelete();
+//                return super.onEnd();
+//            }
+//        };
+//        startWholeSalePurchase.registerFirstState(new SendCFP(), "SendCFP");
+//        startWholeSalePurchase.registerLastState(new FinalState(), "FinalState");
+//        startWholeSalePurchase.registerState(new ReceiveSupplierProposals(supplierProposalMT), "ReceiveSupplierProposal");
+//        startWholeSalePurchase.registerState(new RegisterPurchase(), "RegisterPurchase");
+//        startWholeSalePurchase.registerState(new HandleBuyerCFP(), "HandleBuyerCFP");
+//
+//        startWholeSalePurchase.registerDefaultTransition("SendCFP", "ReceiverSupplierProposal");
+//        startWholeSalePurchase.registerTransition("ReceiverSupplierProposal", "RegisterPurchase", NEXT_STEP);
+//        startWholeSalePurchase.registerTransition("ReceiverSupplierProposal", "FinalState", ABORT);
+//        startWholeSalePurchase.registerDefaultTransition("RegisterPurchase", "HandleBuyerCFP");
+//        startWholeSalePurchase.registerDefaultTransition("HandleBuyerCFP", "FinalState");
     }
 
     private void initialization() {
@@ -106,10 +105,6 @@ public class Customer extends Agent {
     }
 
     private class WaitForSuppliers extends WakerBehaviour {
-        public WaitForSuppliers(Agent a, Date wakeupDate) {
-            super(a, wakeupDate);
-        }
-
         public WaitForSuppliers(Agent a, long timeout) {
             super(a, timeout);
         }
@@ -123,8 +118,8 @@ public class Customer extends Agent {
                 return;
             }
             //TODO: Add FSM
-            addBehaviour(startWholeSalePurchase);
-//            addBehaviour(new SendCFP());
+//            addBehaviour(startWholeSalePurchase);
+            addBehaviour(new SendCFP());
         }
     }
 
@@ -136,6 +131,8 @@ public class Customer extends Agent {
     }
 
     private class SendCFP extends OneShotBehaviour {
+        private MessageTemplate supplierProposalMT;
+
         @Override
         public void action() {
             // Send the cfp to all sellers
@@ -144,13 +141,13 @@ public class Customer extends Agent {
                 cfp.addReceiver(supplier);
             }
             cfp.setContent(goodNeedsJSON);
-            cfp.setConversationId("wholesale-purchase");
+            cfp.setConversationId("customer");
             cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
             myAgent.send(cfp);
             // Prepare the template to get proposals
             supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
                     MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
-
+            addBehaviour(new ReceiveSupplierProposals(supplierProposalMT));
         }
 
 //        @Override
@@ -200,17 +197,18 @@ public class Customer extends Agent {
 
         @Override
         public int onEnd(){
-            System.out.println("End state Recieve");
+            System.out.println("End state Receive");
             if (purchase.isFull()) {
+                addBehaviour(new RegisterPurchase());
                 return NEXT_STEP;
             } else {
+                doDelete();
                 return ABORT;
             }
         }
     }
 
     private class RegisterPurchase extends OneShotBehaviour {
-
         @Override
         public void action() {
             DFAgentDescription dfAgentDescription = new DFAgentDescription();
@@ -225,10 +223,11 @@ public class Customer extends Agent {
             }
         }
 
-//        @Override
-//        public int onEnd() {
-//            return NEXT_STEP;
-//        }
+        @Override
+        public int onEnd() {
+            addBehaviour(new HandleBuyerCFP());
+            return NEXT_STEP;
+        }
     }
 
     private class HandleBuyerCFP extends Behaviour {
@@ -241,7 +240,6 @@ public class Customer extends Agent {
                 // CFP Message received. Process it
                 Map<String, GoodNeed> goodsRequest = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
-                HashMap<String, PurchaseProposal> requestedGoods = new HashMap<String, PurchaseProposal>();
 
                 Map<String, Double> goodPrices = new HashMap<String, Double>();
                 int deliveryPeriod = -1;
@@ -255,12 +253,12 @@ public class Customer extends Agent {
 
                 if (goodPrices.size() > 0) {
                     PurchaseInfo purchaseInfo = new PurchaseInfo(deliveryPeriod, goodPrices);
-                    // The requested goods are available for sale. Reply with the info
+                    // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
                     reply.setContent(jsonSerializer.serialize(purchaseInfo));
                 }
                 else {
-                    // The requested book is NOT available for sale.
+                    // We have not requested goods.
                     reply.setPerformative(ACLMessage.REFUSE);
                     reply.setContent("not-available");
                 }
@@ -278,7 +276,6 @@ public class Customer extends Agent {
     }
 
     private class FinalState extends OneShotBehaviour {
-
         @Override
         public void action() {
             takeDown();
@@ -291,8 +288,11 @@ public class Customer extends Agent {
         System.out.print(String.format("Customer %s terminate.", getAID().getName()));
     }
 
+    /**
+     * Current purchase state.
+     */
     private class Purchase {
-        Map<String, PurchaseProposal> purchaseTable;
+        Map<String, PurchaseProposal> purchaseTable = new HashMap<String, PurchaseProposal>();
 
         public Purchase() {
         }
