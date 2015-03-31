@@ -1,4 +1,4 @@
-package study.masystems.purchasingsystem.defaultvalues;
+package study.masystems.purchasingsystem.utils;
 
 import jade.core.AID;
 import study.masystems.purchasingsystem.PurchaseProposal;

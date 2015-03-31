@@ -6,6 +6,7 @@ import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.Behaviour;
+import jade.core.behaviours.OneShotBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
@@ -14,7 +15,7 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
-import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
+import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,7 +50,7 @@ public class Buyer extends Agent {
         System.out.println("Buyer-agent " + this.getAID().getName() + " terminating.");
     }
 
-    private class SearchCustomers extends Behaviour {
+    private class SearchCustomers extends OneShotBehaviour {
         public void action() {
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription templateSD = new ServiceDescription();
@@ -70,11 +71,6 @@ public class Buyer extends Agent {
             }
 
             this.myAgent.addBehaviour(new ChooseCustomer());
-        }
-
-        @Override
-        public boolean done() {
-            return false;
         }
     }
 

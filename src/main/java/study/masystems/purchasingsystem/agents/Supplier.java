@@ -12,11 +12,9 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseProposal;
-import study.masystems.purchasingsystem.defaultvalues.DataGenerator;
+import study.masystems.purchasingsystem.utils.DataGenerator;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
