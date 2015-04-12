@@ -15,12 +15,16 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
+import jade.util.Logger;
+import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
-import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Initiator of procurement.
@@ -28,6 +32,7 @@ import java.util.*;
 public class Customer extends Agent {
     private JSONSerializer jsonSerializer = new JSONSerializer();
     private JSONDeserializer<Map<String, GoodNeed>> jsonDeserializer = new JSONDeserializer<Map<String, GoodNeed>>();
+    private static Logger logger = Logger.getMyLogger("Customer");
 
     FSMBehaviour startWholeSalePurchase;
 
@@ -44,6 +49,21 @@ public class Customer extends Agent {
     private static final int NEXT_STEP = 0;
     private static final int ABORT = 1;
 
+    public double getMoney() {
+        return money;
+    }
+
+    public void setMoney(double money) {
+        this.money = money;
+    }
+
+    public Map<String, GoodNeed> getGoodNeeds() {
+        return goodNeeds;
+    }
+
+    public void setGoodNeeds(Map<String, GoodNeed> goodNeeds) {
+        this.goodNeeds = goodNeeds;
+    }
 
     @Override
     protected void setup() {
@@ -98,8 +118,23 @@ public class Customer extends Agent {
 
     private void initialization() {
         //TODO: replace with GUI initialization.
-        money = DataGenerator.getRandomMoneyAmount();
-        goodNeeds = DataGenerator.getRandomGoodNeeds();
+        Object[] args = getArguments();
+        if (args == null || args.length == 0) {
+            goodNeeds = DataGenerator.getRandomGoodNeeds();
+            money = DataGenerator.getRandomMoneyAmount();
+        }
+        else {
+            try {
+                goodNeeds = (Map<String, GoodNeed>) args[0];
+                money = (Integer) args[1];
+            } catch (ClassCastException e) {
+                logger.log(Logger.WARNING, "Class Cast Exception by Customer " + this.getAID().getName() + " creation");
+                System.err.println("Class Cast Exception by Customer " + this.getAID().getName() + " creation");
+
+                goodNeeds = DataGenerator.getRandomGoodNeeds();
+                money = DataGenerator.getRandomMoneyAmount();
+            }
+        }
         goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
         waitForSupplier = DataGenerator.randLong(10000, 60000);
     }
