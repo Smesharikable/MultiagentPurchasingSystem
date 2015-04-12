@@ -7,24 +7,29 @@ import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.Behaviour;
 import jade.core.behaviours.OneShotBehaviour;
+import jade.core.behaviours.SequentialBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import javafx.util.Pair;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Purchase participant, that wants to buy some goods.
  */
 public class Buyer extends Agent {
-    private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<PurchaseInfo>();
+    private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS = 5000;
+    private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<>();
+    private JSONSerializer jsonDemandSerializer = new JSONSerializer();
 
     private Map<String, GoodNeed> goodNeeds;
     private double money;
@@ -41,9 +46,12 @@ public class Buyer extends Agent {
         money = DataGenerator.getRandomMoneyAmount();
         goodNeedsJSON = new JSONSerializer().serialize(goodNeeds);
 
+        SequentialBehaviour buyerBehaviour = new SequentialBehaviour();
+        buyerBehaviour.addSubBehaviour(new SearchCustomers());
+        buyerBehaviour.addSubBehaviour(new ChooseCustomer(WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS));
+        buyerBehaviour.addSubBehaviour(new ParticipateInPurchases());
 
-
-        addBehaviour(new SearchCustomers());
+        addBehaviour(buyerBehaviour);
     }
 
     protected void takeDown() {
@@ -69,8 +77,6 @@ public class Buyer extends Agent {
             } catch (FIPAException var5) {
                 var5.printStackTrace();
             }
-
-            this.myAgent.addBehaviour(new ChooseCustomer());
         }
     }
 
@@ -78,11 +84,12 @@ public class Buyer extends Agent {
         private MessageTemplate mt;
         private int step;
         private int repliesCnt;
-        private boolean allReceived = false;
+        private long endTime;
 
-        public ChooseCustomer() {
+        public ChooseCustomer(long period) {
             repliesCnt = 0;
-            this.step = 0;
+            step = 0;
+            endTime = System.currentTimeMillis() + period;
         }
 
         @Override
@@ -98,6 +105,7 @@ public class Buyer extends Agent {
                 }
 
                 cfp.setContent(goodNeedsJSON);
+                //TODO: use ontology?
                 cfp.setConversationId("participation");
                 cfp.setReplyWith("cfp" + System.currentTimeMillis());
 
@@ -107,7 +115,7 @@ public class Buyer extends Agent {
                 step = 1;
                 break;
             case 1:
-                reply = this.myAgent.receive(this.mt);
+                reply = myAgent.receive(mt);
                 if(reply != null) {
                     if(reply.getPerformative() == ACLMessage.PROPOSE) {
                         //TODO: real prices check
@@ -116,15 +124,13 @@ public class Buyer extends Agent {
 
                         for (Map.Entry<String, Double> entry: prices.entrySet()) {
                             String name = entry.getKey();
-                            if (purchaseInfo.getDeliveryPeriod() < goodNeeds.get(name).getDeliveryPeriodDays()) {
-                                proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue());
+                            if (purchaseInfo.getDeliveryPeriodDays() < goodNeeds.get(name).getDeliveryPeriodDays()) {
+                                proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue(), reply);
                             }
                         }
-
-                    }
+                    } // TODO: add for REFUSE?
 
                     repliesCnt++;
-                    allReceived = (this.repliesCnt >= customerAgents.length);
                 } else {
                     this.block();
                 }
@@ -134,37 +140,82 @@ public class Buyer extends Agent {
 
         @Override
         public boolean done() {
-            return allReceived;
+            return (this.repliesCnt >= customerAgents.length) || (endTime <= System.currentTimeMillis());
+        }
+    }
+
+    private class ParticipateInPurchases extends Behaviour {
+
+        @Override
+        public void action() {
+            // Accept chosen proposals.
+            Set<Map.Entry<String, ProposalTable.CustomerProposal>> proposals = proposalTable.getEntrySet();
+            proposals.forEach(entry -> {
+                String good = entry.getKey();
+                GoodNeed goodNeed = goodNeeds.get(good);
+                Pair<String, Integer> demand = new Pair<>(good, goodNeed.getQuantity());
+
+                ProposalTable.CustomerProposal proposal = entry.getValue();
+                ACLMessage reply = proposal.getMessage().createReply();
+                reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
+                reply.setContent(jsonDemandSerializer.serialize(demand));
+
+                myAgent.send(reply);
+            });
+        }
+
+        @Override
+        public boolean done() {
+            return false;
         }
     }
 
     private class ProposalTable {
-        private Map<String, CustomerProposal> proposalMap = new HashMap<String, CustomerProposal>();
+        private Map<String, CustomerProposal> proposalMap = new HashMap<>();
 
         public ProposalTable() {
         }
 
-        public void addCustomerProposal(AID customer, String name, double cost) {
+        public void addCustomerProposal(AID customer, String name, double cost, ACLMessage message) {
             CustomerProposal customerProposal = proposalMap.get(name);
             if (customerProposal == null) {
-                proposalMap.put(name, new CustomerProposal(customer, cost));
+                proposalMap.put(name, new CustomerProposal(customer, cost, message));
                 return;
             }
 
             if (customerProposal.cost > cost) {
-                proposalMap.put(name, new CustomerProposal(customer, cost));
+                proposalMap.put(name, new CustomerProposal(customer, cost, message));
             }
         }
 
-    }
+        public Set<Map.Entry<String, CustomerProposal>> getEntrySet() {
+            return proposalMap.entrySet();
+        }
 
-    private class CustomerProposal {
-        private AID customer;
-        private double cost;
+        private class CustomerProposal {
+            private AID customer;
+            private double cost;
+            private ACLMessage message;
 
-        public CustomerProposal(AID customer, double cost) {
-            this.customer = customer;
-            this.cost = cost;
+            public CustomerProposal(AID customer, double cost, ACLMessage message) {
+                this.customer = customer;
+                this.cost = cost;
+                this.message = message;
+            }
+
+            public AID getCustomer() {
+                return customer;
+            }
+
+            public double getCost() {
+                return cost;
+            }
+
+            public ACLMessage getMessage() {
+                return message;
+            }
         }
     }
+
+
 }
