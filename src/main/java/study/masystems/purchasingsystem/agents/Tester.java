@@ -22,9 +22,17 @@ public class Tester extends Agent{
     @Override
     protected void setup() {
         AgentContainer container = getContainerController();
+        String testDataFilename;
 
         try {
-            Scanner fileScanner = new Scanner(new File("testData.json")).useDelimiter("\\Z");
+            Object[] args = getArguments();
+            if (args == null || args.length == 0) {
+                testDataFilename = "testData.json";
+            } else {
+                testDataFilename = (String) args[0];
+            }
+
+            Scanner fileScanner = new Scanner(new File(testDataFilename)).useDelimiter("\\Z");
             String testData = fileScanner.next();
             fileScanner.close();
 
@@ -60,16 +68,13 @@ public class Tester extends Agent{
 
                     default:
                         logger.log(Logger.WARNING, "Unrecognized agent class " + className);
-                        System.err.println("Unrecognized agent class " + className);
                 }
             }
 
         } catch (FileNotFoundException e) {
             logger.log(Logger.WARNING, "testData.json not found");
-            System.err.println("testData.json not found");
         } catch (StaleProxyException e) {
             logger.log(Logger.WARNING, e.toString());
-            System.err.println(e.toString());
         }
     }
 }

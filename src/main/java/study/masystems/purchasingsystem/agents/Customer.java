@@ -124,7 +124,6 @@ public class Customer extends Agent {
                 money = (Integer) args[1];
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Customer " + this.getAID().getName() + " creation");
-                System.err.println("Class Cast Exception by Customer " + this.getAID().getName() + " creation");
 
                 goodNeeds = DataGenerator.getRandomGoodNeeds();
                 money = DataGenerator.getRandomMoneyAmount();
