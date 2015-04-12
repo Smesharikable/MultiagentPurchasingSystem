@@ -36,6 +36,8 @@ public class Supplier extends Agent {
 
     @Override
     protected void setup() {
+        //Check whether an agent was read from file or created manually
+        //If read, then parse args.
         Object[] args = getArguments();
         if (args == null || args.length == 0) {
             goods = DataGenerator.getRandomGoodsTable(this.getAID());
@@ -50,6 +52,7 @@ public class Supplier extends Agent {
                 goods = DataGenerator.getRandomGoodsTable(this.getAID());
             }
         }
+
         // Register the supplier service in the yellow pages
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());

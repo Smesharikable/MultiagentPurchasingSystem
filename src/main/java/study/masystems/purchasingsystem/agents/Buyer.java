@@ -55,18 +55,17 @@ public class Buyer extends Agent {
     protected void setup() {
         System.out.println("Hallo! Buyer-agent " + this.getAID().getName() + " is ready.");
 
+        //Check whether an agent was read from file or created manually
+        //If read, then parse args.
         Object[] args = getArguments();
         if (args == null || args.length == 0) {
-            System.out.println("RANDOOOM");
             goodNeeds = DataGenerator.getRandomGoodNeeds();
             money = DataGenerator.getRandomMoneyAmount();
         }
         else {
             try {
                 goodNeeds = (Map<String, GoodNeed>) args[0];
-                System.out.println(goodNeeds);
                 money = (Integer) args[1];
-                System.out.println(money);
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Buyer " + this.getAID().getName() + " creation");
                 System.err.println("Class Cast Exception by Buyer " + this.getAID().getName() + " creation");
