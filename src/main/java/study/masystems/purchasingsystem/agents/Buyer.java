@@ -31,14 +31,14 @@ public class Buyer extends Agent {
     private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS = 5000;
     private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<>();
     private JSONSerializer jsonDemandSerializer = new JSONSerializer();
-    private static Logger logger = Logger.getMyLogger("Buyer");
 
     private Map<String, GoodNeed> goodNeeds;
-    private double money;
     private String goodNeedsJSON;
+    private double money;
     private AID[] customerAgents;
-
     private ProposalTable proposalTable = new ProposalTable();
+
+    private static Logger logger = Logger.getMyLogger("Buyer");
 
     public Map<String, GoodNeed> getGoodNeeds() {
         return goodNeeds;
@@ -139,6 +139,7 @@ public class Buyer extends Agent {
                 }
 
                 cfp.setContent(goodNeedsJSON);
+                //TODO: use ontology?
                 cfp.setConversationId("participation");
                 cfp.setReplyWith("cfp" + System.currentTimeMillis());
 

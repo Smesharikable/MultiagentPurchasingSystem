@@ -16,7 +16,6 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
 import jade.util.Logger;
-import javafx.util.Pair;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.GoodNeed;
@@ -36,26 +35,26 @@ public class Customer extends Agent {
     private long RECEIVE_SUPPLIER_PROPOSAL_TIMEOUT_MS = 5000;
     private int PURCHASE_NUMBER_LIMIT = 1;
     private long PURCHASE_TIMEOUT_MS = 10000;
-    private static Logger logger = Logger.getMyLogger("Customer");
-
     private PurchaseState purchaseState = PurchaseState.NONE;
 
     private JSONSerializer jsonSerializer = new JSONSerializer();
+
     private JSONDeserializer<HashMap<String, PurchaseProposal>> supplierProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Map<String, GoodNeed>> buyerProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Pair<String, Integer>> demandDeserializer = new JSONDeserializer<>();
-
     private List<AID> suppliers = new ArrayList<>();
-    private ACLMessage supplierSubscription;
 
     private double money;
     private Map<String, GoodNeed> goodNeeds;
-    private String goodNeedsJSON;
 
+    private String goodNeedsJSON;
     private Purchase purchase = new Purchase();
+    private ACLMessage supplierSubscription;
 
     private static final int NEXT_STEP = 0;
     private static final int ABORT = 1;
+
+    private static Logger logger = Logger.getMyLogger("Customer");
 
     public double getMoney() {
         return money;
@@ -153,8 +152,6 @@ public class Customer extends Agent {
     }
 
     private class WaitForSuppliers extends WakerBehaviour {
-        private int counter = 0;
-
         public WaitForSuppliers(Agent a, long timeout) {
             super(a, timeout);
         }
