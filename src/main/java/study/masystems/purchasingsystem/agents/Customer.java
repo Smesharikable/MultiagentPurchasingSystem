@@ -111,6 +111,8 @@ public class Customer extends Agent {
 
     private void initialization() {
         //TODO: replace with GUI initialization.
+        //Check whether an agent was read from file or created manually
+        //If read, then parse args.
         Object[] args = getArguments();
         if (args == null || args.length == 0) {
             goodNeeds = DataGenerator.getRandomGoodNeeds();
