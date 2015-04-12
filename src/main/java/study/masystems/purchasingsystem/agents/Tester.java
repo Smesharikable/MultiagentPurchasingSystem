@@ -2,6 +2,7 @@ package study.masystems.purchasingsystem.agents;
 
 import flexjson.JSONDeserializer;
 import jade.core.Agent;
+import jade.util.Logger;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
@@ -15,51 +16,60 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
 
-/**
- * Created by Kimbaet on 11.04.2015.
- */
 public class Tester extends Agent{
-    private AgentContainer container;
+    private static Logger logger = Logger.getMyLogger("Buyer");
 
     @Override
     protected void setup() {
-        container = getContainerController();
+        AgentContainer container = getContainerController();
 
         try {
-            Scanner fileScanner = new Scanner(new File("test.json")).useDelimiter("\\Z");
-            String test = fileScanner.next();
+            Scanner fileScanner = new Scanner(new File("testData.json")).useDelimiter("\\Z");
+            String testData = fileScanner.next();
             fileScanner.close();
 
-            JSONObject agents = new JSONObject(test);
-            System.out.println(agents.toString(1));
+            JSONObject agents = new JSONObject(testData);
+            //System.out.println(agents.toString(1));
 
-            for (String a : agents.keySet())
+            String JSONAgentString;
+            AgentController newAgent;
+
+            for (String agentName : agents.keySet())
             {
-                JSONObject JSONagent = agents.getJSONObject(a);
-                String className = JSONagent.getString("class");
+                JSONObject JSONAgent = agents.getJSONObject(agentName);
+                String className = JSONAgent.getString("class");
 
                 switch (className){
                     case "study.masystems.purchasingsystem.agents.Customer":
                     case "study.masystems.purchasingsystem.agents.Buyer":
-                        Object needs = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(JSONagent.getJSONObject("goodNeeds").toString());
-                        System.out.println(needs);
-                        Object money = JSONagent.getInt("money");
-                        System.out.println(money);
-                        AgentController newAgent = container.createNewAgent(a, className, new Object[]{needs, money});
+                        JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
+                        Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(JSONAgentString);
+                        Object money = JSONAgent.getInt("money");
+
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{goodNeeds, money});
                         newAgent.start();
                         break;
+
                     case "study.masystems.purchasingsystem.agents.Supplier":
-                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>().deserialize(JSONagent.getJSONObject("goodNeeds").toString());
-                        AgentController newAgent1 = container.createNewAgent(a, className, new Object[]{goods});
-                        newAgent1.start();
+                        JSONAgentString = JSONAgent.getJSONObject("goods").toString();
+                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>().deserialize(JSONAgentString);
+
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{goods});
+                        newAgent.start();
                         break;
+
+                    default:
+                        logger.log(Logger.WARNING, "Unrecognized agent class " + className);
+                        System.err.println("Unrecognized agent class " + className);
                 }
             }
 
         } catch (FileNotFoundException e) {
-            System.out.println("File not found");
+            logger.log(Logger.WARNING, "testData.json not found");
+            System.err.println("testData.json not found");
         } catch (StaleProxyException e) {
-            System.out.println(e.toString());
+            logger.log(Logger.WARNING, e.toString());
+            System.err.println(e.toString());
         }
     }
 }
