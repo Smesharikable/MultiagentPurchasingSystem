@@ -10,6 +10,7 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import jade.util.Logger;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.utils.DataGenerator;
@@ -23,10 +24,33 @@ import java.util.Map;
 public class Supplier extends Agent {
 
     private HashMap<String, PurchaseProposal> goods;
+    private static Logger logger = Logger.getMyLogger("Supplier");
+
+    public HashMap<String, PurchaseProposal> getGoods() {
+        return goods;
+    }
+
+    public void setGoods(HashMap<String, PurchaseProposal> goods) {
+        this.goods = goods;
+    }
 
     @Override
     protected void setup() {
-        goods = DataGenerator.getRandomGoodsTable(this.getAID());
+        //Check whether an agent was read from file or created manually
+        //If read, then parse args.
+        Object[] args = getArguments();
+        if (args == null || args.length == 0) {
+            goods = DataGenerator.getRandomGoodsTable(this.getAID());
+        }
+        else {
+            try {
+                goods = (HashMap<String, PurchaseProposal>) args[0];
+            } catch (ClassCastException e) {
+                logger.log(Logger.WARNING, "Class Cast Exception by Supplier " + this.getAID().getName() + " creation");
+
+                goods = DataGenerator.getRandomGoodsTable(this.getAID());
+            }
+        }
 
         // Register the supplier service in the yellow pages
         DFAgentDescription dfd = new DFAgentDescription();

@@ -13,6 +13,7 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import jade.util.Logger;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.utils.DataGenerator;
@@ -25,6 +26,7 @@ import java.util.Map;
  */
 public class Buyer extends Agent {
     private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<PurchaseInfo>();
+    private static Logger logger = Logger.getMyLogger("Buyer");
 
     private Map<String, GoodNeed> goodNeeds;
     private double money;
@@ -33,15 +35,45 @@ public class Buyer extends Agent {
 
     private ProposalTable proposalTable = new ProposalTable();
 
+    public Map<String, GoodNeed> getGoodNeeds() {
+        return goodNeeds;
+    }
+
+    public void setGoodNeeds(Map<String, GoodNeed> goodNeeds) {
+        this.goodNeeds = goodNeeds;
+    }
+
+    public double getMoney() {
+        return money;
+    }
+
+    public void setMoney(double money) {
+        this.money = money;
+    }
+
     @Override
     protected void setup() {
         System.out.println("Hallo! Buyer-agent " + this.getAID().getName() + " is ready.");
 
-        goodNeeds = DataGenerator.getRandomGoodNeeds();
-        money = DataGenerator.getRandomMoneyAmount();
+        //Check whether an agent was read from file or created manually
+        //If read, then parse args.
+        Object[] args = getArguments();
+        if (args == null || args.length == 0) {
+            goodNeeds = DataGenerator.getRandomGoodNeeds();
+            money = DataGenerator.getRandomMoneyAmount();
+        }
+        else {
+            try {
+                goodNeeds = (Map<String, GoodNeed>) args[0];
+                money = (Integer) args[1];
+            } catch (ClassCastException e) {
+                logger.log(Logger.WARNING, "Class Cast Exception by Buyer " + this.getAID().getName() + " creation");
+
+                goodNeeds = DataGenerator.getRandomGoodNeeds();
+                money = DataGenerator.getRandomMoneyAmount();
+            }
+        }
         goodNeedsJSON = new JSONSerializer().serialize(goodNeeds);
-
-
 
         addBehaviour(new SearchCustomers());
     }
