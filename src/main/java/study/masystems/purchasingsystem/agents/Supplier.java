@@ -47,7 +47,6 @@ public class Supplier extends Agent {
                 goods = (HashMap<String, PurchaseProposal>) args[0];
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Supplier " + this.getAID().getName() + " creation");
-                System.err.println("Class Cast Exception by Supplier " + this.getAID().getName() + " creation");
 
                 goods = DataGenerator.getRandomGoodsTable(this.getAID());
             }
