@@ -6,8 +6,8 @@ import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.Behaviour;
-import jade.core.behaviours.OneShotBehaviour;
 import jade.core.behaviours.SequentialBehaviour;
+import jade.core.behaviours.WakerBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
@@ -15,7 +15,7 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
-import javafx.util.Pair;
+import study.masystems.purchasingsystem.Demand;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.utils.DataGenerator;
@@ -29,6 +29,7 @@ import java.util.Set;
  */
 public class Buyer extends Agent {
     private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS = 5000;
+    private long WAIT_FOR_CUSTOMERS = 5000;
     private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<>();
     private JSONSerializer jsonDemandSerializer = new JSONSerializer();
 
@@ -58,8 +59,6 @@ public class Buyer extends Agent {
 
     @Override
     protected void setup() {
-        System.out.println("Hallo! Buyer-agent " + this.getAID().getName() + " is ready.");
-
         //Check whether an agent was read from file or created manually
         //If read, then parse args.
         Object[] args = getArguments();
@@ -81,7 +80,7 @@ public class Buyer extends Agent {
         goodNeedsJSON = new JSONSerializer().serialize(goodNeeds);
 
         SequentialBehaviour buyerBehaviour = new SequentialBehaviour();
-        buyerBehaviour.addSubBehaviour(new SearchCustomers());
+        buyerBehaviour.addSubBehaviour(new SearchCustomers(this, WAIT_FOR_CUSTOMERS));
         buyerBehaviour.addSubBehaviour(new ChooseCustomer(WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS));
         buyerBehaviour.addSubBehaviour(new ParticipateInPurchases());
 
@@ -92,23 +91,33 @@ public class Buyer extends Agent {
         System.out.println("Buyer-agent " + this.getAID().getName() + " terminating.");
     }
 
-    private class SearchCustomers extends OneShotBehaviour {
-        public void action() {
+    private class SearchCustomers extends WakerBehaviour {
+        public SearchCustomers(Agent a, long timeout) {
+            super(a, timeout);
+        }
+
+        @Override
+        protected void onWake() {
+            super.onWake();
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription templateSD = new ServiceDescription();
             templateSD.setType("customer");
             template.addServices(templateSD);
 
             try {
-                DFAgentDescription[] fe = DFService.search(this.myAgent, template);
-                System.out.println("Found the following seller agents:");
+                DFAgentDescription[] fe = DFService.search(myAgent, template);
+                System.out.println("Buyer found the following seller agents:");
                 customerAgents = new AID[fe.length];
 
                 for(int i = 0; i < fe.length; ++i) {
                     customerAgents[i] = fe[i].getName();
                     System.out.println(customerAgents[i].getName());
                 }
+                if (fe.length == 0) {
+                    parent.reset();
+                }
             } catch (FIPAException var5) {
+                parent.reset();
                 var5.printStackTrace();
             }
         }
@@ -116,13 +125,18 @@ public class Buyer extends Agent {
 
     private class ChooseCustomer extends Behaviour {
         private MessageTemplate mt;
-        private int step;
-        private int repliesCnt;
-        private long endTime;
+        private int step = 0;
+        private int repliesCnt = 0;
+        private long period = 0;
+        private long endTime = 0;
 
         public ChooseCustomer(long period) {
-            repliesCnt = 0;
-            step = 0;
+            this.period = period;
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
             endTime = System.currentTimeMillis() + period;
         }
 
@@ -162,9 +176,9 @@ public class Buyer extends Agent {
                                 proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue(), reply);
                             }
                         }
+                        repliesCnt++;
                     } // TODO: add for REFUSE?
 
-                    repliesCnt++;
                 } else {
                     this.block();
                 }
@@ -183,11 +197,12 @@ public class Buyer extends Agent {
         @Override
         public void action() {
             // Accept chosen proposals.
+            System.out.println("Buyer accept proposal.");
             Set<Map.Entry<String, ProposalTable.CustomerProposal>> proposals = proposalTable.getEntrySet();
             proposals.forEach(entry -> {
                 String good = entry.getKey();
                 GoodNeed goodNeed = goodNeeds.get(good);
-                Pair<String, Integer> demand = new Pair<>(good, goodNeed.getQuantity());
+                Demand demand = new Demand(good, goodNeed.getQuantity());
 
                 ProposalTable.CustomerProposal proposal = entry.getValue();
                 ACLMessage reply = proposal.getMessage().createReply();
@@ -200,7 +215,7 @@ public class Buyer extends Agent {
 
         @Override
         public boolean done() {
-            return false;
+            return true;
         }
     }
 
@@ -250,6 +265,4 @@ public class Buyer extends Agent {
             }
         }
     }
-
-
 }

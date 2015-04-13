@@ -16,9 +16,10 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
 import jade.util.Logger;
+import study.masystems.purchasingsystem.Demand;
+import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
-import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ public class Customer extends Agent {
 
     private JSONDeserializer<HashMap<String, PurchaseProposal>> supplierProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Map<String, GoodNeed>> buyerProposeDeserializer = new JSONDeserializer<>();
-    private JSONDeserializer<Pair<String, Integer>> demandDeserializer = new JSONDeserializer<>();
+    private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
     private List<AID> suppliers = new ArrayList<>();
 
     private double money;
@@ -49,6 +50,7 @@ public class Customer extends Agent {
 
     private String goodNeedsJSON;
     private Purchase purchase = new Purchase();
+    private DFAgentDescription purchaseDescription;
     private ACLMessage supplierSubscription;
 
     private static final int NEXT_STEP = 0;
@@ -129,7 +131,7 @@ public class Customer extends Agent {
             }
         }
         goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
-        WAIT_FOR_SUPPLIERS_TIMEOUT_MS = DataGenerator.randLong(10000, 60000);
+//        WAIT_FOR_SUPPLIERS_TIMEOUT_MS = DataGenerator.randLong(10000, 60000);
     }
 
     private void unsubscribeFromSuppliers() {
@@ -166,6 +168,8 @@ public class Customer extends Agent {
                 } else {
                     parent.reset();
                 }
+            } else {
+                System.out.println("Customer found supplier.");
             }
         }
     }
@@ -194,13 +198,14 @@ public class Customer extends Agent {
                     ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
                     suppliers.forEach(cfp::addReceiver);
                     cfp.setContent(goodNeedsJSON);
-                    cfp.setConversationId("customer");
+                    cfp.setConversationId("wholesale-purchase");
                     cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
                     myAgent.send(cfp);
                     // Prepare the template to get proposals
                     supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
                             MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
                     state = RECEIVE_PROPOSALS;
+                    System.out.println("Customer send CFP.");
                     break;
                 }
                 case RECEIVE_PROPOSALS: {
@@ -219,10 +224,12 @@ public class Customer extends Agent {
                         }
                         repliesCnt++;
                         allReplies = (repliesCnt >= suppliers.size());
+                        System.out.println("Customer receive proposal.");
                     }
                     else {
                         block();
                     }
+                    break;
                 }
             }
         }
@@ -291,13 +298,14 @@ public class Customer extends Agent {
 
         @Override
         public void action() {
-            DFAgentDescription dfAgentDescription = new DFAgentDescription();
+            purchaseDescription = new DFAgentDescription();
             ServiceDescription serviceDescription = new ServiceDescription();
             serviceDescription.setType("customer");
-            dfAgentDescription.addServices(serviceDescription);
+            serviceDescription.setName("purchase");
+            purchaseDescription.addServices(serviceDescription);
 
             try {
-                DFService.register(myAgent, dfAgentDescription);
+                DFService.register(myAgent, purchaseDescription);
                 purchaseState = PurchaseState.OPEN;
             } catch (FIPAException e) {
                 // TODO: Log error.
@@ -316,6 +324,11 @@ public class Customer extends Agent {
         protected void onWake() {
             super.onWake();
             purchaseState = PurchaseState.CLOSED;
+            try {
+                DFService.deregister(myAgent, purchaseDescription);
+            } catch (FIPAException e) {
+                e.printStackTrace();
+            }
             if (!purchase.isFormed()) {
                 parent.reset();
                 System.out.println("Purchase reset!");
@@ -375,6 +388,7 @@ public class Customer extends Agent {
                     reply.setContent("not-available");
                 }
                 myAgent.send(reply);
+                System.out.println("Customer replied to buyer.");
             }
             else {
                 block();
@@ -400,8 +414,8 @@ public class Customer extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 //TODO: add timestamp check.
-                Pair<String, Integer> demand = demandDeserializer.deserialize(msg.getContent());
-                boolean success = purchase.addDemand(msg.getSender(), demand.getKey(), demand.getValue());
+                Demand demand = demandDeserializer.deserialize(msg.getContent());
+                boolean success = purchase.addDemand(msg.getSender(), demand.getGood(), demand.getCount());
                 ACLMessage reply = msg.createReply();
                 if (success) {
                     reply.setPerformative(ACLMessage.AGREE);
@@ -478,13 +492,16 @@ public class Customer extends Agent {
          * @return true, if demand added successfully; false, if good if not found.
          */
         public boolean addDemand(AID buyer, String good, int count) {
+            if (!purchaseTable.containsKey(good)) {
+                return false;
+            }
             DemandTable demand = demandTable.get(good);
             if (demand == null) {
-                return false;
+                demandTable.put(good, new DemandTable(buyer, count));
             } else {
                 demand.put(buyer, count);
-                return true;
             }
+            return true;
         }
 
         public void clear() {
@@ -511,7 +528,11 @@ public class Customer extends Agent {
         public boolean isFormed() {
             for (Map.Entry<String, PurchaseProposal> entry: purchaseTable.entrySet()) {
                 int minimalQuantity = entry.getValue().getMinimalQuantity();
-                int totalDemand = demandTable.get(entry.getKey()).getTotal();
+                DemandTable demand = demandTable.get(entry.getKey());
+                if (demand == null) {
+                    return false;
+                }
+                int totalDemand = demand.getTotal();
                 if (minimalQuantity > totalDemand) {
                     return false;
                 }
@@ -521,6 +542,13 @@ public class Customer extends Agent {
 
         private class DemandTable {
             Map<AID, Integer> demand = new HashMap<>();
+
+            public DemandTable() {
+            }
+
+            public DemandTable(AID buyer, int count) {
+                demand.put(buyer, count);
+            }
 
             public void put(AID buyer, int count) {
                 demand.put(buyer, count);
