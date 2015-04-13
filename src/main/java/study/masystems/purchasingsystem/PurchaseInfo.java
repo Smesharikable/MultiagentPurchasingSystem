@@ -9,7 +9,7 @@ import java.util.Map;
  */
 public class PurchaseInfo {
 
-    private int deliveryPeriod = 0;
+    private int deliveryPeriodDays = 0;
     private Map<String, Double> goodsPrice;
 
     public PurchaseInfo() {
@@ -17,7 +17,7 @@ public class PurchaseInfo {
     }
 
     public PurchaseInfo(int deliveryPeriod, Map<String, Double> goodsPrice) {
-        this.deliveryPeriod = deliveryPeriod;
+        this.deliveryPeriodDays = deliveryPeriod;
         this.goodsPrice = goodsPrice;
     }
 
@@ -25,15 +25,15 @@ public class PurchaseInfo {
         goodsPrice.put(name, cost);
     }
 
-    public int getDeliveryPeriod() {
-        return deliveryPeriod;
+    public int getDeliveryPeriodDays() {
+        return deliveryPeriodDays;
     }
 
-    public void setDeliveryPeriod(int deliveryPeriod) {
-        if (deliveryPeriod < 0) {
+    public void setDeliveryPeriodDays(int deliveryPeriodDays) {
+        if (deliveryPeriodDays < 0) {
             throw new IllegalArgumentException("Delivery period must be positive.");
         }
-        this.deliveryPeriod = deliveryPeriod;
+        this.deliveryPeriodDays = deliveryPeriodDays;
     }
 
     public Map<String, Double> getGoodsPrice() {
