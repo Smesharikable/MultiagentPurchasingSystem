@@ -4,10 +4,7 @@ import flexjson.JSONDeserializer;
 import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.Behaviour;
-import jade.core.behaviours.FSMBehaviour;
-import jade.core.behaviours.OneShotBehaviour;
-import jade.core.behaviours.WakerBehaviour;
+import jade.core.behaviours.*;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
@@ -22,10 +19,7 @@ import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Initiator of procurement.
@@ -154,6 +148,8 @@ public class Customer extends Agent {
     }
 
     private class WaitForSuppliers extends WakerBehaviour {
+        private int counter = 0;
+
         public WaitForSuppliers(Agent a, long timeout) {
             super(a, timeout);
         }
