@@ -51,7 +51,9 @@ public class Tester extends Agent{
                     case "study.masystems.purchasingsystem.agents.Customer":
                     case "study.masystems.purchasingsystem.agents.Buyer":
                         JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
-                        Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(JSONAgentString);
+                        Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>()
+                                .use("values", GoodNeed.class)
+                                .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goodNeeds, money});
@@ -60,7 +62,9 @@ public class Tester extends Agent{
 
                     case "study.masystems.purchasingsystem.agents.Supplier":
                         JSONAgentString = JSONAgent.getJSONObject("goods").toString();
-                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>().deserialize(JSONAgentString);
+                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>()
+                                .use("values", PurchaseProposal.class)
+                                .deserialize(JSONAgentString);
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goods});
                         newAgent.start();
