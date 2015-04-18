@@ -32,7 +32,7 @@ public class Tester extends Agent{
                 testDataFilename = (String) args[0];
             }
 
-            Scanner fileScanner = new Scanner(new File(testDataFilename)).useDelimiter("\\Z");
+            Scanner fileScanner = new Scanner(new File("." + File.separator + "test" + File.separator + testDataFilename)).useDelimiter("\\Z");
             String testData = fileScanner.next();
             fileScanner.close();
 
@@ -42,8 +42,25 @@ public class Tester extends Agent{
             String JSONAgentString;
             AgentController newAgent;
 
-            for (String agentName : agents.keySet())
-            {
+            /*StringBuilder sniffList = new StringBuilder("df;");
+            for (String agentName : agents.keySet()) {
+                sniffList.append(agentName).append(";");
+            }
+            sniffList.deleteCharAt(sniffList.length()-1);
+            System.out.println(sniffList);
+            AgentController sniffer = container.createNewAgent("sniffer11", jade.tools.sniffer.Sniffer.class.getName(), new Object[]{sniffList});
+            sniffer.start();
+            System.out.println(sniffer.getState());
+
+            while (!(sniffer.getState().getName().equalsIgnoreCase("active")));
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(sniffer.getState());*/
+
+            for (String agentName : agents.keySet()) {
                 JSONObject JSONAgent = agents.getJSONObject(agentName);
                 String className = JSONAgent.getString("class");
 
@@ -51,19 +68,25 @@ public class Tester extends Agent{
                     case "study.masystems.purchasingsystem.agents.Customer":
                     case "study.masystems.purchasingsystem.agents.Buyer":
                         JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
-                        Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(JSONAgentString);
+                        Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>()
+                                                .use("values", GoodNeed.class)
+                                                .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goodNeeds, money});
                         newAgent.start();
+                        logger.log(Logger.INFO, "Agent " + className.substring(40) + " : " + agentName + " created");
                         break;
 
                     case "study.masystems.purchasingsystem.agents.Supplier":
                         JSONAgentString = JSONAgent.getJSONObject("goods").toString();
-                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>().deserialize(JSONAgentString);
+                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>()
+                                            .use("values", PurchaseProposal.class)
+                                            .deserialize(JSONAgentString);
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goods});
                         newAgent.start();
+                        logger.log(Logger.INFO, "Agent " + className.substring(40) + " : " + agentName + " created");
                         break;
 
                     default:
