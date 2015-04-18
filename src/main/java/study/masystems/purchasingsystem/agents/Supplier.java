@@ -22,7 +22,8 @@ import java.util.Map;
  * Product supplier.
  */
 public class Supplier extends Agent {
-
+    private JSONSerializer jsonSerializer = new JSONSerializer();
+    private JSONDeserializer<Map<String, GoodNeed>> customerProposeDeserializer = new JSONDeserializer<>();
     private HashMap<String, PurchaseProposal> goods;
     private static Logger logger = Logger.getMyLogger("Supplier");
 
@@ -76,9 +77,9 @@ public class Supplier extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 // CFP Message received. Process it
-                Map<String, GoodNeed> goodsRequest = new JSONDeserializer<Map<String, GoodNeed>>().deserialize(msg.getContent());
+                Map<String, GoodNeed> goodsRequest = customerProposeDeserializer.deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
-                HashMap<String, PurchaseProposal> requestedGoods = new HashMap<String, PurchaseProposal>();
+                HashMap<String, PurchaseProposal> requestedGoods = new HashMap<>();
 
                 for (Map.Entry<String, GoodNeed> good : goodsRequest.entrySet()){
                     String goodName = good.getKey();
@@ -90,9 +91,8 @@ public class Supplier extends Agent {
                 if (requestedGoods.size() != 0) {
                     // The requested goods are available for sale. Reply with the info
                     reply.setPerformative(ACLMessage.PROPOSE);
-                    reply.setContent(new JSONSerializer().serialize(requestedGoods));
-                }
-                else {
+                    reply.setContent(jsonSerializer.serialize(requestedGoods));
+                } else {
                     // The requested book is NOT available for sale.
                     reply.setPerformative(ACLMessage.REFUSE);
                     reply.setContent("not-available");
@@ -103,5 +103,5 @@ public class Supplier extends Agent {
                 block();
             }
         }
-    }  // End of inner class OfferRequestsServer
+    }
 }
