@@ -31,6 +31,7 @@ public class Customer extends Agent {
     private int PURCHASE_NUMBER_LIMIT = 1;
     private long PURCHASE_TIMEOUT_MS = 10000;
     private PurchaseState purchaseState = PurchaseState.NONE;
+    private String currentPurchaseConvId;
 
     private JSONSerializer jsonSerializer = new JSONSerializer();
 
@@ -194,11 +195,12 @@ public class Customer extends Agent {
                     ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
                     suppliers.forEach(cfp::addReceiver);
                     cfp.setContent(goodNeedsJSON);
-                    cfp.setConversationId("wholesale-purchase");
-                    cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
+                    String convId = "wholesale-purchase" + hashCode() + "_" + System.currentTimeMillis();
+                    cfp.setConversationId(convId);
+                    cfp.setReplyWith("cfp" + hashCode() + "_" + System.currentTimeMillis()); // Unique value
                     myAgent.send(cfp);
                     // Prepare the template to get proposals
-                    supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
+                    supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId(convId),
                             MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
                     state = RECEIVE_PROPOSALS;
                     System.out.println("Customer send CFP.");
@@ -281,7 +283,7 @@ public class Customer extends Agent {
             Set<AID> buyers = purchase.getBuyers();
             ACLMessage cancelMessage = new ACLMessage(ACLMessage.CANCEL);
             //TODO: use ontology?
-            cancelMessage.setConversationId("participation");
+            cancelMessage.setConversationId(currentPurchaseConvId);
             buyers.forEach(cancelMessage::addReceiver);
             myAgent.send(cancelMessage);
         }
@@ -297,7 +299,8 @@ public class Customer extends Agent {
             purchaseDescription = new DFAgentDescription();
             ServiceDescription serviceDescription = new ServiceDescription();
             serviceDescription.setType("customer");
-            serviceDescription.setName("purchase");
+            currentPurchaseConvId = "purchase" + hashCode() + "_" + System.currentTimeMillis();
+            serviceDescription.setName(currentPurchaseConvId);
             purchaseDescription.addServices(serviceDescription);
 
             try {
@@ -376,10 +379,11 @@ public class Customer extends Agent {
                     PurchaseInfo purchaseInfo = new PurchaseInfo(deliveryPeriod, goodPrices);
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
+                    reply.setConversationId(currentPurchaseConvId);
                     reply.setContent(jsonSerializer.serialize(purchaseInfo));
                 }
                 else {
-                    // We have not requested goods.
+                    // We don't have requested goods.
                     reply.setPerformative(ACLMessage.REFUSE);
                     reply.setContent("not-available");
                 }
@@ -405,7 +409,7 @@ public class Customer extends Agent {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
                     MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
-                    MessageTemplate.MatchConversationId("participation")
+                    MessageTemplate.MatchConversationId(currentPurchaseConvId)
             );
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {

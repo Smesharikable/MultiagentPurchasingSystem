@@ -15,6 +15,7 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
+import jade.util.leap.Iterator;
 import study.masystems.purchasingsystem.Demand;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
@@ -36,7 +37,8 @@ public class Buyer extends Agent {
     private Map<String, GoodNeed> goodNeeds;
     private String goodNeedsJSON;
     private double money;
-    private AID[] customerAgents;
+    private HashMap<AID, String> customerAgents;
+    private String currentPurchaseName;
     private ProposalTable proposalTable = new ProposalTable();
 
     private static Logger logger = Logger.getMyLogger("Buyer");
@@ -106,12 +108,24 @@ public class Buyer extends Agent {
             try {
                 DFAgentDescription[] fe = DFService.search(myAgent, template);
                 System.out.println("Buyer found the following seller agents:");
-                customerAgents = new AID[fe.length];
+                customerAgents = new HashMap<>();
 
-                for(int i = 0; i < fe.length; ++i) {
-                    customerAgents[i] = fe[i].getName();
-                    System.out.println(customerAgents[i].getName());
+                for (DFAgentDescription aFe : fe) {
+                    String purchaseName = "";
+
+                    Iterator allServices = aFe.getAllServices();
+                    if (!allServices.hasNext()) {
+                        logger.log(Logger.WARNING, "Cannot find services by " + aFe.getName());
+                    }
+
+                    while (allServices.hasNext()) {
+                        purchaseName = ((ServiceDescription) allServices.next()).getName();
+                    }
+
+                    customerAgents.put(aFe.getName(), purchaseName);
+                    System.out.println(aFe.getName() + " purchase " + purchaseName);
                 }
+
                 if (fe.length == 0) {
                     parent.reset();
                 }
@@ -146,19 +160,17 @@ public class Buyer extends Agent {
             switch (step) {
             case 0:
                 ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
-                for (AID customer : customerAgents) {
-                    //TODO: check purchase date and need time
-                    cfp.addReceiver(customer);
-                }
+                //TODO: check purchase date and need time
+                customerAgents.keySet().forEach(cfp::addReceiver);
 
                 cfp.setContent(goodNeedsJSON);
                 //TODO: use ontology?
-                cfp.setConversationId("participation");
-                cfp.setReplyWith("cfp" + System.currentTimeMillis());
+                String convId = "participation";
+                cfp.setConversationId(convId);
+                cfp.setReplyWith("cfp" + hashCode() + "_" + System.currentTimeMillis());
 
                 myAgent.send(cfp);
-                mt = MessageTemplate.and(MessageTemplate.MatchConversationId("participation"),
-                        MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
+                mt = MessageTemplate.MatchInReplyTo(cfp.getReplyWith());
                 step = 1;
                 break;
             case 1:
@@ -170,6 +182,7 @@ public class Buyer extends Agent {
                         Map<String, Double> prices = purchaseInfo.getGoodsPrice();
 
                         for (Map.Entry<String, Double> entry: prices.entrySet()) {
+
                             String name = entry.getKey();
                             if (purchaseInfo.getDeliveryPeriodDays() < goodNeeds.get(name).getDeliveryPeriodDays()) {
                                 proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue(), reply);
@@ -187,7 +200,7 @@ public class Buyer extends Agent {
 
         @Override
         public boolean done() {
-            return (this.repliesCnt >= customerAgents.length) || (endTime <= System.currentTimeMillis());
+            return (this.repliesCnt >= customerAgents.size()) || (endTime <= System.currentTimeMillis());
         }
     }
 
@@ -203,6 +216,7 @@ public class Buyer extends Agent {
                 GoodNeed goodNeed = goodNeeds.get(good);
                 Demand demand = new Demand(good, goodNeed.getQuantity());
 
+                currentPurchaseName = customerAgents.get(entry.getValue().customer);
                 ProposalTable.CustomerProposal proposal = entry.getValue();
                 ACLMessage reply = proposal.getMessage().createReply();
                 reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
