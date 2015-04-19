@@ -32,12 +32,11 @@ public class Tester extends Agent{
                 testDataFilename = (String) args[0];
             }
 
-            Scanner fileScanner = new Scanner(new File("."+ File.separator+"test"+File.separator+testDataFilename)).useDelimiter("\\Z");
+            Scanner fileScanner = new Scanner(new File(testDataFilename)).useDelimiter("\\Z");
             String testData = fileScanner.next();
             fileScanner.close();
 
             JSONObject agents = new JSONObject(testData);
-            //System.out.println(agents.toString(1));
 
             String JSONAgentString;
             AgentController newAgent;

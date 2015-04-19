@@ -20,6 +20,8 @@ import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.logging.Level;
 
 /**
  * Initiator of procurement.
