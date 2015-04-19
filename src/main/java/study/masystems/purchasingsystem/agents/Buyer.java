@@ -183,7 +183,6 @@ public class Buyer extends Agent {
                         Map<String, Double> prices = purchaseInfo.getGoodsPrice();
 
                         for (Map.Entry<String, Double> entry: prices.entrySet()) {
-
                             String name = entry.getKey();
                             if (purchaseInfo.getDeliveryPeriodDays() < goodNeeds.get(name).getDeliveryPeriodDays()) {
                                 proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue());

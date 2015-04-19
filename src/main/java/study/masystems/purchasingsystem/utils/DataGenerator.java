@@ -1,7 +1,6 @@
 package study.masystems.purchasingsystem.utils;
 
-import jade.core.AID;
-import study.masystems.purchasingsystem.PurchaseProposal;
+import study.masystems.purchasingsystem.GoodInformation;
 import study.masystems.purchasingsystem.GoodNeed;
 
 import java.util.*;
@@ -35,8 +34,8 @@ public class DataGenerator {
     public DataGenerator() {
     }
 
-    public static HashMap<String, PurchaseProposal> getRandomGoodsTable(AID supplier) {
-        HashMap<String, PurchaseProposal> goodsTable = new HashMap<String, PurchaseProposal>();
+    public static HashMap<String, GoodInformation> getRandomGoodsTable() {
+        HashMap<String, GoodInformation> goodsTable = new HashMap<>();
 
         List<String> selectedGoods = getRandomGoods();
         int deliveryTime = getRandomDeliveryPeriod();
@@ -44,7 +43,7 @@ public class DataGenerator {
         for (String good: selectedGoods) {
             int minQuantity = getRandomPurchaseQuantity();
             double price = getRandomCost();
-            goodsTable.put(good, new PurchaseProposal(supplier, price, minQuantity, deliveryTime));
+            goodsTable.put(good, new GoodInformation(price, minQuantity, deliveryTime));
         }
 
         return goodsTable;
