@@ -197,7 +197,7 @@ public class Customer extends Agent {
                     cfp.setContent(goodNeedsJSON);
                     String convId = "wholesale-purchase" + hashCode() + "_" + System.currentTimeMillis();
                     cfp.setConversationId(convId);
-                    cfp.setReplyWith("cfp" + hashCode() + "_" + System.currentTimeMillis()); // Unique value
+                    cfp.setReplyWith("cfp" + "_" + System.currentTimeMillis()); // Unique value
                     myAgent.send(cfp);
                     // Prepare the template to get proposals
                     supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId(convId),
@@ -355,10 +355,8 @@ public class Customer extends Agent {
 
         @Override
         public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                    MessageTemplate.MatchPerformative(ACLMessage.CFP),
-                    MessageTemplate.MatchConversationId("participation")
-            );
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.CFP);
+
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 // CFP Message received. Process it
@@ -379,7 +377,6 @@ public class Customer extends Agent {
                     PurchaseInfo purchaseInfo = new PurchaseInfo(deliveryPeriod, goodPrices);
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
-                    reply.setConversationId(currentPurchaseConvId);
                     reply.setContent(jsonSerializer.exclude("*.class").serialize(purchaseInfo));
                 }
                 else {
@@ -407,15 +404,12 @@ public class Customer extends Agent {
     private class AddBuyerToParty extends Behaviour {
         @Override
         public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                    MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
-                    MessageTemplate.MatchConversationId(currentPurchaseConvId)
-            );
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL);
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
-                //TODO: add timestamp check.
-                Demand demand = demandDeserializer.deserialize(msg.getContent(), Demand.class);
-                boolean success = purchase.addDemand(msg.getSender(), demand.getGood(), demand.getCount());
+                Demand demand = demandDeserializer.use("orders",HashMap.class).deserialize(msg.getContent(), Demand.class);
+                //TODO: check purchase name.
+                boolean success = purchase.addDemand(msg.getSender(), demand);
                 ACLMessage reply = msg.createReply();
                 if (success) {
                     reply.setPerformative(ACLMessage.AGREE);
@@ -482,6 +476,15 @@ public class Customer extends Agent {
                 return -1;
             }
             return 0;
+        }
+
+        public boolean addDemand(AID buyer, Demand demand) {
+            Map<String, Integer> orders = demand.getOrders();
+            for (Map.Entry<String, Integer> entry: orders.entrySet()) {
+                boolean success = addDemand(buyer, entry.getKey(), entry.getValue());
+                if (!success) return false;
+            }
+            return true;
         }
 
         /**

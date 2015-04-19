@@ -38,7 +38,6 @@ public class Buyer extends Agent {
     private String goodNeedsJSON;
     private double money;
     private HashMap<AID, String> customerAgents;
-    private String currentPurchaseName;
     private ProposalTable proposalTable = new ProposalTable();
 
     private static Logger logger = Logger.getMyLogger("Buyer");
@@ -118,9 +117,10 @@ public class Buyer extends Agent {
                         logger.log(Logger.WARNING, "Cannot find services by " + aFe.getName());
                     }
 
-                    while (allServices.hasNext()) {
-                        purchaseName = ((ServiceDescription) allServices.next()).getName();
-                    }
+                    //while (allServices.hasNext()) {
+                    purchaseName = ((ServiceDescription) allServices.next()).getName();
+                    //  if (purchaseName)
+                    //}
 
                     customerAgents.put(aFe.getName(), purchaseName);
                     System.out.println(aFe.getName() + " purchase " + purchaseName);
@@ -165,12 +165,13 @@ public class Buyer extends Agent {
 
                 cfp.setContent(goodNeedsJSON);
                 //TODO: use ontology?
-                String convId = "participation";
+                String convId = "participation" + hashCode() + "_" + System.currentTimeMillis();
                 cfp.setConversationId(convId);
-                cfp.setReplyWith("cfp" + hashCode() + "_" + System.currentTimeMillis());
+                cfp.setReplyWith("cfp" + "_" + System.currentTimeMillis());
 
                 myAgent.send(cfp);
-                mt = MessageTemplate.MatchInReplyTo(cfp.getReplyWith());
+                mt = MessageTemplate.and(MessageTemplate.MatchInReplyTo(cfp.getReplyWith()),
+                                         MessageTemplate.MatchConversationId(convId));
                 step = 1;
                 break;
             case 1:
@@ -185,7 +186,7 @@ public class Buyer extends Agent {
 
                             String name = entry.getKey();
                             if (purchaseInfo.getDeliveryPeriodDays() < goodNeeds.get(name).getDeliveryPeriodDays()) {
-                                proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue(), reply);
+                                proposalTable.addCustomerProposal(reply.getSender(), name, entry.getValue());
                             }
                         }
                         repliesCnt++;
@@ -210,20 +211,47 @@ public class Buyer extends Agent {
         public void action() {
             // Accept chosen proposals.
             System.out.println("Buyer accept proposal.");
-            Set<Map.Entry<String, ProposalTable.CustomerProposal>> proposals = proposalTable.getEntrySet();
+            Map<AID, Demand> purchases = new HashMap<>();
+
+            for (Map.Entry<String, ProposalTable.CustomerProposal> entry: proposalTable.getEntrySet()) {
+                String good = entry.getKey();
+                ProposalTable.CustomerProposal customerProposal = entry.getValue();
+                AID customer = customerProposal.getCustomer();
+
+                Demand demand = purchases.get(customer);
+                if (demand == null) {
+                    demand = new Demand(customerAgents.get(customer));
+                    GoodNeed goodNeed = goodNeeds.get(good);
+                    demand.put(good, goodNeed.getQuantity());
+                    purchases.put(customer, demand);
+                } else {
+                    GoodNeed goodNeed = goodNeeds.get(good);
+                    demand.put(good, goodNeed.getQuantity());
+                }
+            }
+
+            purchases.forEach((customer, demand) -> {
+                ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+                accept.setConversationId(demand.getPurchaseName() + "_" + hashCode() + System.currentTimeMillis());
+                accept.setContent(jsonDemandSerializer.exclude("*.class").serialize(demand));
+                accept.addReceiver(customer);
+
+                myAgent.send(accept);
+            });
+
+/*            Set<Map.Entry<String, ProposalTable.CustomerProposal>> proposals = proposalTable.getEntrySet();
             proposals.forEach(entry -> {
                 String good = entry.getKey();
                 GoodNeed goodNeed = goodNeeds.get(good);
                 Demand demand = new Demand(good, goodNeed.getQuantity());
 
-                currentPurchaseName = customerAgents.get(entry.getValue().customer);
                 ProposalTable.CustomerProposal proposal = entry.getValue();
                 ACLMessage reply = proposal.getMessage().createReply();
                 reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
                 reply.setContent(jsonDemandSerializer.exclude("*.class").serialize(demand));
 
                 myAgent.send(reply);
-            });
+            });*/
         }
 
         @Override
@@ -238,15 +266,15 @@ public class Buyer extends Agent {
         public ProposalTable() {
         }
 
-        public void addCustomerProposal(AID customer, String name, double cost, ACLMessage message) {
+        public void addCustomerProposal(AID customer, String name, double cost) {
             CustomerProposal customerProposal = proposalMap.get(name);
             if (customerProposal == null) {
-                proposalMap.put(name, new CustomerProposal(customer, cost, message));
+                proposalMap.put(name, new CustomerProposal(customer, cost));
                 return;
             }
 
             if (customerProposal.cost > cost) {
-                proposalMap.put(name, new CustomerProposal(customer, cost, message));
+                proposalMap.put(name, new CustomerProposal(customer, cost));
             }
         }
 
@@ -257,12 +285,10 @@ public class Buyer extends Agent {
         private class CustomerProposal {
             private AID customer;
             private double cost;
-            private ACLMessage message;
 
-            public CustomerProposal(AID customer, double cost, ACLMessage message) {
+            public CustomerProposal(AID customer, double cost) {
                 this.customer = customer;
                 this.cost = cost;
-                this.message = message;
             }
 
             public AID getCustomer() {
@@ -271,10 +297,6 @@ public class Buyer extends Agent {
 
             public double getCost() {
                 return cost;
-            }
-
-            public ACLMessage getMessage() {
-                return message;
             }
         }
     }
