@@ -11,12 +11,14 @@ import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
+import study.masystems.purchasingsystem.GoodInformation;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Product supplier.
@@ -24,16 +26,18 @@ import java.util.Map;
 public class Supplier extends Agent {
     private JSONSerializer jsonSerializer = new JSONSerializer();
     private JSONDeserializer<Map<String, GoodNeed>> customerProposeDeserializer = new JSONDeserializer<>();
-    private HashMap<String, PurchaseProposal> goods;
-    private static Logger logger = Logger.getMyLogger("Supplier");
+    private JSONDeserializer<Map<String, Integer>> orderDeserializer = new JSONDeserializer<>();
+    private HashMap<String, GoodInformation> goods;
 
-    public HashMap<String, PurchaseProposal> getGoods() {
+    public HashMap<String, GoodInformation> getGoods() {
         return goods;
     }
 
-    public void setGoods(HashMap<String, PurchaseProposal> goods) {
+    public void setGoods(HashMap<String, GoodInformation> goods) {
         this.goods = goods;
     }
+
+    private static Logger logger = Logger.getMyLogger(Supplier.class.getName());
 
     @Override
     protected void setup() {
@@ -41,15 +45,15 @@ public class Supplier extends Agent {
         //If read, then parse args.
         Object[] args = getArguments();
         if (args == null || args.length == 0) {
-            goods = DataGenerator.getRandomGoodsTable(this.getAID());
+            goods = DataGenerator.getRandomGoodsTable();
         }
         else {
             try {
-                goods = (HashMap<String, PurchaseProposal>) args[0];
+                goods = (HashMap<String, GoodInformation>) args[0];
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Supplier " + this.getAID().getName() + " creation");
 
-                goods = DataGenerator.getRandomGoodsTable(this.getAID());
+                goods = DataGenerator.getRandomGoodsTable();
             }
         }
 
@@ -69,6 +73,7 @@ public class Supplier extends Agent {
 
         // Add the behaviour serving queries from customer agents
         addBehaviour(new OfferRequestsServer());
+        addBehaviour(new HandleOrdersBehaviour());
     }
 
     private class OfferRequestsServer extends CyclicBehaviour {
@@ -84,7 +89,7 @@ public class Supplier extends Agent {
                 for (Map.Entry<String, GoodNeed> good : goodsRequest.entrySet()){
                     String goodName = good.getKey();
                     if (goods.containsKey(goodName)) {
-                        requestedGoods.put(goodName, goods.get(goodName));
+                        requestedGoods.put(goodName, new PurchaseProposal(myAgent.getAID(), goods.get(goodName)));
                     }
                 }
 
@@ -103,5 +108,48 @@ public class Supplier extends Agent {
                 block();
             }
         }
+    }
+
+    private class HandleOrdersBehaviour extends CyclicBehaviour {
+        private MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL);
+        @Override
+        public void action() {
+            ACLMessage orderMessage = myAgent.receive(mt);
+            if (orderMessage != null) {
+                ACLMessage reply = orderMessage.createReply();
+                final Map<String, Integer> order = orderDeserializer.deserialize(orderMessage.getContent());
+                final boolean isComplete;
+                try {
+                    isComplete = checkGoodInformation(order);
+                    if (isComplete) {
+                        reply.setPerformative(ACLMessage.CONFIRM);
+                    } else {
+                        reply.setPerformative(ACLMessage.REFUSE);
+                        reply.setContent("not complete order");
+                    }
+                } catch (NoSuchElementException e) {
+                    reply.setPerformative(ACLMessage.REFUSE);
+                    reply.setContent("no required goods");
+                }
+                send(reply);
+            } else {
+                block();
+            }
+        }
+    }
+
+    private boolean checkGoodInformation(Map<String, Integer> order) throws NoSuchElementException {
+        for(Map.Entry<String, Integer> entry : order.entrySet()) {
+            String good = entry.getKey();
+            GoodInformation goodInformation = goods.get(good);
+            if (goodInformation == null) {
+                throw new NoSuchElementException();
+            }
+            Integer quantity = entry.getValue();
+            if (goodInformation.getMinimalQuantity() > quantity) {
+                return false;
+            }
+        }
+        return true;
     }
 }

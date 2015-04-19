@@ -7,8 +7,8 @@ import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
 import org.json.JSONObject;
+import study.masystems.purchasingsystem.GoodInformation;
 import study.masystems.purchasingsystem.GoodNeed;
-import study.masystems.purchasingsystem.PurchaseProposal;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -62,8 +62,8 @@ public class Tester extends Agent{
 
                     case "study.masystems.purchasingsystem.agents.Supplier":
                         JSONAgentString = JSONAgent.getJSONObject("goods").toString();
-                        Object goods = new JSONDeserializer<HashMap<String, PurchaseProposal>>()
-                                .use("values", PurchaseProposal.class)
+                        Object goods = new JSONDeserializer<HashMap<String, GoodInformation>>()
+                                .use("values", GoodInformation.class)
                                 .deserialize(JSONAgentString);
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goods});

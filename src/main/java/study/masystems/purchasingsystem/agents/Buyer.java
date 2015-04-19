@@ -152,7 +152,6 @@ public class Buyer extends Agent {
                 }
 
                 cfp.setContent(goodNeedsJSON);
-                //TODO: use ontology?
                 cfp.setConversationId("participation");
                 cfp.setReplyWith("cfp" + System.currentTimeMillis());
 

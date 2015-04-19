@@ -20,6 +20,8 @@ import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.logging.Level;
 
 /**
  * Initiator of procurement.
@@ -27,30 +29,35 @@ import java.util.*;
 public class Customer extends Agent {
     private int WAIT_FOR_SUPPLIERS_LIMIT = 3;
     private long WAIT_FOR_SUPPLIERS_TIMEOUT_MS = 5000;
-    private long RECEIVE_SUPPLIER_PROPOSAL_TIMEOUT_MS = 5000;
+    private long RECEIVE_SUPPLIERS_PROPOSAL_TIMEOUT_MS = 5000;
+    private long RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS = 2000;
     private int PURCHASE_NUMBER_LIMIT = 1;
     private long PURCHASE_TIMEOUT_MS = 10000;
-    private PurchaseState purchaseState = PurchaseState.NONE;
 
     private JSONSerializer jsonSerializer = new JSONSerializer();
 
     private JSONDeserializer<HashMap<String, PurchaseProposal>> supplierProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Map<String, GoodNeed>> buyerProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
-    private List<AID> suppliers = new ArrayList<>();
 
     private double money;
     private Map<String, GoodNeed> goodNeeds;
-
     private String goodNeedsJSON;
+
     private Purchase purchase = new Purchase();
     private DFAgentDescription purchaseDescription;
+    private PurchaseState purchaseState = PurchaseState.NONE;
+
+    private List<AID> suppliers = new ArrayList<>();
+    private Map<AID, ACLMessage> suppliersProposal = new HashMap<>();
     private ACLMessage supplierSubscription;
 
-    private static final int NEXT_STEP = 0;
-    private static final int ABORT = 1;
+    private static final int SUCCESS = 0;
+    private static final int FAIL = 1;
+    private static final int ABORT = 2;
 
-    private static Logger logger = Logger.getMyLogger("Customer");
+    private static Logger logger = Logger.getMyLogger(Customer.class.getName());
+    private MessageTemplate conversationWithSupplierMT;
 
     public double getMoney() {
         return money;
@@ -97,7 +104,23 @@ public class Customer extends Agent {
             }
         });
 
-        SequentialBehaviour customerBehaviour = new SequentialBehaviour();
+        SequentialBehaviour customerBehaviour = new SequentialBehaviour() {
+            @Override
+            protected void scheduleNext(boolean currentDone, int currentResult) {
+                super.scheduleNext(currentDone, currentResult);
+                if (currentDone) {
+                    switch (currentResult) {
+                        case (FAIL): {
+                            reset();
+                            break;
+                        }
+                        case (ABORT): {
+                            doDelete();
+                        }
+                    }
+                }
+            }
+        };
         customerBehaviour.addSubBehaviour(createFindSupplierBehaviour());
         customerBehaviour.addSubBehaviour(new PurchaseOrganization(this, PURCHASE_TIMEOUT_MS));
 
@@ -112,8 +135,7 @@ public class Customer extends Agent {
         if (args == null || args.length == 0) {
             goodNeeds = DataGenerator.getRandomGoodNeeds();
             money = DataGenerator.getRandomMoneyAmount();
-        }
-        else {
+        } else {
             try {
                 goodNeeds = (Map<String, GoodNeed>) args[0];
                 money = (Integer) args[1];
@@ -137,9 +159,56 @@ public class Customer extends Agent {
      */
 
     private SequentialBehaviour createFindSupplierBehaviour() {
-        SequentialBehaviour findSuppliers = new SequentialBehaviour(this);
+        SequentialBehaviour findSuppliers = new SequentialBehaviour(this) {
+            private int counter = 0;
+            private int status = SUCCESS;
+
+            @Override
+            public void onStart() {
+                super.onStart();
+                counter++;
+                if (counter > WAIT_FOR_SUPPLIERS_LIMIT) {
+                    skipNext();
+                    status = ABORT;
+                }
+            }
+
+            @Override
+            public void reset() {
+                super.reset();
+                status = SUCCESS;
+            }
+
+            @Override
+            protected void scheduleNext(boolean currentDone, int currentResult) {
+                super.scheduleNext(currentDone, currentResult);
+                if (currentDone) {
+                    switch (currentResult) {
+                        case (FAIL): {
+                            if (counter == WAIT_FOR_SUPPLIERS_LIMIT) {
+                                skipNext();
+                                status = ABORT;
+                            } else {
+                                reset();
+                            }
+                            break;
+                        }
+                        case (ABORT): {
+                            skipNext();
+                            status = ABORT;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public int onEnd() {
+                return status;
+            }
+        };
         findSuppliers.addSubBehaviour(new WaitForSuppliers(this, WAIT_FOR_SUPPLIERS_TIMEOUT_MS));
-        findSuppliers.addSubBehaviour(new GatheringProposal(this, RECEIVE_SUPPLIER_PROPOSAL_TIMEOUT_MS));
+        findSuppliers.addSubBehaviour(new GatheringProposal(this, RECEIVE_SUPPLIERS_PROPOSAL_TIMEOUT_MS));
         return findSuppliers;
     }
 
@@ -148,7 +217,7 @@ public class Customer extends Agent {
     }
 
     private class WaitForSuppliers extends WakerBehaviour {
-        private int counter = 0;
+        private int status = SUCCESS;
 
         public WaitForSuppliers(Agent a, long timeout) {
             super(a, timeout);
@@ -157,16 +226,22 @@ public class Customer extends Agent {
         @Override
         protected void onWake() {
             super.onWake();
-            counter ++;
             if (suppliers.size() == 0) {
-                if (counter > WAIT_FOR_SUPPLIERS_LIMIT) {
-                    doDelete();
-                } else {
-                    parent.reset();
-                }
+                status = FAIL;
             } else {
-                System.out.println("Customer found supplier.");
+                System.out.println("Customer " + myAgent.getLocalName() + " found supplier.");
             }
+        }
+
+        @Override
+        public void reset(long timeout) {
+            super.reset(timeout);
+            status = SUCCESS;
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
         }
     }
 
@@ -175,15 +250,21 @@ public class Customer extends Agent {
         private final int RECEIVE_PROPOSALS = 1;
         private int state = CFP_STATE;
 
-        private final long endTime;
+        private final long timeout;
+        private long endTime;
 
-        private MessageTemplate supplierProposalMT;
         private int repliesCnt = 0;
         private boolean allReplies = false;
 
         public GatheringProposal(Agent a, long timeout) {
             super(a);
-            this.endTime = timeout + System.currentTimeMillis();
+            this.timeout = timeout;
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            endTime = System.currentTimeMillis() + timeout;
         }
 
         @Override
@@ -195,34 +276,36 @@ public class Customer extends Agent {
                     suppliers.forEach(cfp::addReceiver);
                     cfp.setContent(goodNeedsJSON);
                     cfp.setConversationId("wholesale-purchase");
-                    cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
+                    cfp.setReplyWith("cfp" + System.currentTimeMillis()); // Unique value
                     myAgent.send(cfp);
                     // Prepare the template to get proposals
-                    supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
-                            MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
+                    conversationWithSupplierMT = MessageTemplate.and(
+                            MessageTemplate.MatchConversationId("wholesale-purchase"),
+                            MessageTemplate.MatchInReplyTo(cfp.getReplyWith())
+                    );
                     state = RECEIVE_PROPOSALS;
                     System.out.println("Customer send CFP.");
                     break;
                 }
                 case RECEIVE_PROPOSALS: {
                     // Receive all proposals/refusals from suppliers agents
-                    ACLMessage reply = myAgent.receive(supplierProposalMT);
+                    ACLMessage reply = myAgent.receive(conversationWithSupplierMT);
                     if (reply != null) {
                         // Reply received
                         if (reply.getPerformative() == ACLMessage.PROPOSE) {
+                            suppliersProposal.put(reply.getSender(), reply);
                             // This is an offer
                             HashMap<String, PurchaseProposal> goodsInfo =
                                     supplierProposeDeserializer.deserialize(reply.getContent());
                             //TODO: Add needs check.
-                            for (Map.Entry<String, PurchaseProposal> entry: goodsInfo.entrySet()) {
+                            for (Map.Entry<String, PurchaseProposal> entry : goodsInfo.entrySet()) {
                                 purchase.addProposal(entry.getKey(), entry.getValue());
                             }
                         }
                         repliesCnt++;
                         allReplies = (repliesCnt >= suppliers.size());
                         System.out.println("Customer receive proposal.");
-                    }
-                    else {
+                    } else {
                         block();
                     }
                     break;
@@ -236,12 +319,12 @@ public class Customer extends Agent {
         }
 
         @Override
-        public int onEnd(){
+        public int onEnd() {
             if (!purchase.isFull()) {
                 // Reset FindSupplier behaviour.
-                parent.reset();
+                return FAIL;
             }
-            return NEXT_STEP;
+            return SUCCESS;
         }
     }
 
@@ -251,25 +334,66 @@ public class Customer extends Agent {
 
     private class PurchaseOrganization extends SequentialBehaviour {
         private int purchaseCounter = 1;
+        private int status = SUCCESS;
 
         public PurchaseOrganization(Agent a, long purchasePeriod) {
             super(a);
             addSubBehaviour(new OpenPurchase(myAgent));
             addSubBehaviour(new ClosePurchase(myAgent, purchasePeriod));
             //TODO: add PlaceOrder and ConfirmPurchase.
+            addSubBehaviour(new PlaceOrderBehaviour(RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS));
+            addSubBehaviour(new SendConfirmation());
             myAgent.addBehaviour(createCommunicationWithBuyersBehaviour());
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            purchaseCounter++;
+            if (purchaseCounter > PURCHASE_NUMBER_LIMIT) {
+                skipNext();
+                status = ABORT;
+            }
+        }
+
+        @Override
+        protected void scheduleNext(boolean currentDone, int currentResult) {
+            super.scheduleNext(currentDone, currentResult);
+            if (currentDone) {
+                switch (currentResult) {
+                    case (FAIL): {
+                        cancelPurchase();
+                        if (purchaseCounter == PURCHASE_NUMBER_LIMIT) {
+                            cancelPurchase();
+                            skipNext();
+                            status = ABORT;
+                        } else {
+                            reset();
+                        }
+                        break;
+                    }
+                    case (ABORT): {
+                        cancelPurchase();
+                        skipNext();
+                        if (purchaseCounter == PURCHASE_NUMBER_LIMIT) {
+                            status = ABORT;
+                            logger.log(
+                                    Level.INFO,
+                                    String.format("Customer %s: purchase organization has been aborted.", getLocalName())
+                            );
+                        } else {
+                            status = FAIL;
+                        }
+                    }
+                }
+            }
         }
 
         @Override
         public void reset() {
             super.reset();
-            cancelPurchase();
-            if (purchaseCounter > PURCHASE_NUMBER_LIMIT) {
-                doDelete();
-            } else {
-                // We will try to organize one more purchase.
-                purchaseCounter ++;
-            }
+            sendCancelMessageToBuyers();
+            status = SUCCESS;
         }
 
         private void cancelPurchase() {
@@ -280,10 +404,14 @@ public class Customer extends Agent {
         private void sendCancelMessageToBuyers() {
             Set<AID> buyers = purchase.getBuyers();
             ACLMessage cancelMessage = new ACLMessage(ACLMessage.CANCEL);
-            //TODO: use ontology?
             cancelMessage.setConversationId("participation");
             buyers.forEach(cancelMessage::addReceiver);
             myAgent.send(cancelMessage);
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
         }
     }
 
@@ -311,9 +439,16 @@ public class Customer extends Agent {
     }
 
     private class ClosePurchase extends WakerBehaviour {
+        private int status = SUCCESS;
 
         public ClosePurchase(Agent a, long timeout) {
             super(a, timeout);
+        }
+
+        @Override
+        public void reset(long timeout) {
+            super.reset(timeout);
+            status = SUCCESS;
         }
 
         @Override
@@ -326,11 +461,136 @@ public class Customer extends Agent {
                 e.printStackTrace();
             }
             if (!purchase.isFormed()) {
-                parent.reset();
+                status = FAIL;
                 System.out.println("Purchase reset!");
             } else {
                 System.out.println("Purchase completed");
             }
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
+        }
+    }
+
+    private class PlaceOrderBehaviour extends Behaviour {
+        private final long timeout;
+
+        private static final int SEND_STATE = 0;
+        private static final int RECEIVE_STATE = 1;
+        private int state = SEND_STATE;
+
+        private long endTime;
+        private int receivedCount = 0;
+        private MessageTemplate mt;
+
+        private Integer status = 0;
+
+        private  Map<AID, Set<String>> suppliersTable;
+
+        public PlaceOrderBehaviour(long timeout) {
+            this.timeout = timeout;
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            endTime = System.currentTimeMillis() + timeout;
+            suppliersTable = purchase.getSuppliersTable();
+        }
+
+        @Override
+        public void action() {
+            switch (state) {
+                case SEND_STATE: {
+                    mt = send();
+                    state = RECEIVE_STATE;
+                    break;
+                }
+                case RECEIVE_STATE: {
+                    ACLMessage reply = myAgent.receive(mt);
+                    if (reply != null) {
+                        handleReply(reply);
+                        receivedCount ++;
+                    } else {
+                        block();
+                    }
+                    break;
+                }
+            }
+        }
+
+        protected MessageTemplate send() {
+            logger.log(Level.INFO, String.format("Customer %s send order to suppliers", myAgent.getLocalName()));
+            final String conversationId = "purchase order" + hashCode() + System.currentTimeMillis();
+            suppliersTable.forEach((supplier, goods) -> {
+                // Form order for supplier.
+                Map<String, Integer> order = new HashMap<>();
+                goods.forEach(good -> order.put(good, purchase.getTotalDemand(good)));
+
+                // Send order to supplier.
+                ACLMessage message = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+                message.addReceiver(supplier);
+                message.setConversationId(conversationId);
+                message.setContent(jsonSerializer.serialize(order));
+                myAgent.send(message);
+
+            });
+            return MessageTemplate.MatchConversationId(conversationId);
+        }
+
+        protected void handleReply(ACLMessage reply) {
+            switch (reply.getPerformative()) {
+                case ACLMessage.CONFIRM: {
+                    // Ok.
+                    break;
+                }
+                case ACLMessage.REFUSE: {
+                    status = ABORT;
+                    break;
+                }
+                default: {
+                    status = ABORT;
+                    break;
+                }
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return allReceived() || (endTime <= System.currentTimeMillis());
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            state = SEND_STATE;
+            receivedCount = 0;
+            status = SUCCESS;
+        }
+
+        @Override
+        public int onEnd() {
+            if (!allReceived()) {
+                return ABORT;
+            }
+            return status;
+        }
+
+        private boolean allReceived() {
+            return receivedCount >= suppliersTable.size();
+        }
+    }
+
+    private class SendConfirmation extends OneShotBehaviour {
+
+        @Override
+        public void action() {
+            Set<AID> buyers = purchase.getBuyers();
+            ACLMessage confirmation = new ACLMessage(ACLMessage.CONFIRM);
+            buyers.forEach(confirmation::addReceiver);
+            myAgent.send(confirmation);
         }
     }
 
@@ -364,7 +624,7 @@ public class Customer extends Agent {
 
                 Map<String, Double> goodPrices = new HashMap<>();
                 int deliveryPeriod = -1;
-                for (Map.Entry<String, GoodNeed> good : goodsRequest.entrySet()){
+                for (Map.Entry<String, GoodNeed> good : goodsRequest.entrySet()) {
                     String goodName = good.getKey();
                     PurchaseProposal purchaseProposal = purchase.purchaseTable.get(goodName);
 
@@ -377,16 +637,14 @@ public class Customer extends Agent {
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
                     reply.setContent(jsonSerializer.serialize(purchaseInfo));
-                }
-                else {
+                } else {
                     // We have not requested goods.
                     reply.setPerformative(ACLMessage.REFUSE);
                     reply.setContent("not-available");
                 }
                 myAgent.send(reply);
                 System.out.println("Customer replied to buyer.");
-            }
-            else {
+            } else {
                 block();
             }
         }
@@ -409,7 +667,7 @@ public class Customer extends Agent {
             );
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
-                //TODO: add timestamp check.
+                //TODO: add purchase state check.
                 Demand demand = demandDeserializer.deserialize(msg.getContent());
                 boolean success = purchase.addDemand(msg.getSender(), demand.getGood(), demand.getCount());
                 ACLMessage reply = msg.createReply();
@@ -449,7 +707,8 @@ public class Customer extends Agent {
 
         /**
          * Add new proposal to the table. Replace old one if new is better.
-         * @param name good's name.
+         *
+         * @param name        good's name.
          * @param newProposal new proposal.
          */
         public void addProposal(String name, PurchaseProposal newProposal) {
@@ -481,11 +740,10 @@ public class Customer extends Agent {
         }
 
         /**
-         *
-         * @param buyer -- the buyer.
-         * @param good -- good demanded.
-         * @param count -- goods count.
-         * @return true, if demand added successfully; false, if good if not found.
+         * @param buyer The buyer.
+         * @param good  The good demanded.
+         * @param count The goods count.
+         * @return <tt>true<tt/>, if demand added successfully; false, if good is not found.
          */
         public boolean addDemand(AID buyer, String good, int count) {
             if (!purchaseTable.containsKey(good)) {
@@ -506,14 +764,47 @@ public class Customer extends Agent {
 
         public Set<AID> getBuyers() {
             Set<AID> buyers = new HashSet<>();
-            demandTable.forEach((good, demand) -> {
-                buyers.addAll(demand.getBuyers());
-            });
+            demandTable.forEach((good, demand) -> buyers.addAll(demand.getBuyers()));
             return buyers;
         }
 
+        public Set<AID> getSuppliers() {
+            Set<AID> suppliers = new HashSet<>();
+            purchaseTable.forEach((good, purchase) -> suppliers.add(purchase.getSupplier()));
+            return suppliers;
+        }
+
+        public Map<AID, Set<String>> getSuppliersTable() {
+            Map<AID, Set<String>> suppliersTable = new HashMap<>();
+            purchaseTable.forEach((good, purchase) -> {
+                AID supplier = purchase.getSupplier();
+                Set<String> goods = suppliersTable.get(supplier);
+                if (goods == null) {
+                    goods = new HashSet<>();
+                    goods.add(good);
+                    suppliersTable.put(supplier, goods);
+                } else {
+                    goods.add(good);
+                }
+            });
+            return suppliersTable;
+        }
+
+        public int getTotalDemand(String good) {
+            DemandTable demand = demandTable.get(good);
+            if (demand == null) {
+                throw new NoSuchElementException("Good " + good + " not found.");
+            }
+            return demand.getTotal();
+        }
+
+        /**
+         * Check whether all good needs are satisfied by suppliers.
+         *
+         * @return <tt>true</tt>, if all good needs are satisfied.
+         */
         public boolean isFull() {
-            for (String name: goodNeeds.keySet()) {
+            for (String name : goodNeeds.keySet()) {
                 if (!purchaseTable.containsKey(name)) {
                     return false;
                 }
@@ -521,8 +812,13 @@ public class Customer extends Agent {
             return true;
         }
 
+        /**
+         * Check whether all requirements for purchase are satisfied.
+         *
+         * @return <tt>true</tt>, if all requirements are satisfied.
+         */
         public boolean isFormed() {
-            for (Map.Entry<String, PurchaseProposal> entry: purchaseTable.entrySet()) {
+            for (Map.Entry<String, PurchaseProposal> entry : purchaseTable.entrySet()) {
                 int minimalQuantity = entry.getValue().getMinimalQuantity();
                 DemandTable demand = demandTable.get(entry.getKey());
                 if (demand == null) {
@@ -552,8 +848,11 @@ public class Customer extends Agent {
 
             public int getTotal() {
                 final int[] totalDemand = {0};
-                demand.forEach((buyer, count) -> {
-                    totalDemand[0] += count;
+                demand.forEach(new BiConsumer<AID, Integer>() {
+                    @Override
+                    public void accept(AID buyer, Integer count) {
+                        totalDemand[0] += count;
+                    }
                 });
                 return totalDemand[0];
             }
@@ -563,5 +862,4 @@ public class Customer extends Agent {
             }
         }
     }
-
 }
