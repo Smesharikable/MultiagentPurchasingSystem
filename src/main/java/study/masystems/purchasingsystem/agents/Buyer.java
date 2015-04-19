@@ -78,7 +78,7 @@ public class Buyer extends Agent {
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
-        goodNeedsJSON = new JSONSerializer().serialize(goodNeeds);
+        goodNeedsJSON = new JSONSerializer().exclude("*.class").serialize(goodNeeds);
 
         SequentialBehaviour buyerBehaviour = new SequentialBehaviour();
         buyerBehaviour.addSubBehaviour(new SearchCustomers(this, WAIT_FOR_CUSTOMERS));
@@ -178,7 +178,7 @@ public class Buyer extends Agent {
                 if(reply != null) {
                     if(reply.getPerformative() == ACLMessage.PROPOSE) {
                         //TODO: real prices check
-                        PurchaseInfo purchaseInfo = jsonDeserializer.deserialize(reply.getContent());
+                        PurchaseInfo purchaseInfo = jsonDeserializer.deserialize(reply.getContent(), PurchaseInfo.class);
                         Map<String, Double> prices = purchaseInfo.getGoodsPrice();
 
                         for (Map.Entry<String, Double> entry: prices.entrySet()) {
@@ -220,7 +220,7 @@ public class Buyer extends Agent {
                 ProposalTable.CustomerProposal proposal = entry.getValue();
                 ACLMessage reply = proposal.getMessage().createReply();
                 reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
-                reply.setContent(jsonDemandSerializer.serialize(demand));
+                reply.setContent(jsonDemandSerializer.exclude("*.class").serialize(demand));
 
                 myAgent.send(reply);
             });

@@ -77,7 +77,7 @@ public class Supplier extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 // CFP Message received. Process it
-                Map<String, GoodNeed> goodsRequest = customerProposeDeserializer.deserialize(msg.getContent());
+                Map<String, GoodNeed> goodsRequest = customerProposeDeserializer.use("values", GoodNeed.class).deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
                 HashMap<String, PurchaseProposal> requestedGoods = new HashMap<>();
 
@@ -91,7 +91,7 @@ public class Supplier extends Agent {
                 if (requestedGoods.size() != 0) {
                     // The requested goods are available for sale. Reply with the info
                     reply.setPerformative(ACLMessage.PROPOSE);
-                    reply.setContent(jsonSerializer.serialize(requestedGoods));
+                    reply.setContent(jsonSerializer.exclude("*.class").serialize(requestedGoods));
                 } else {
                     // The requested book is NOT available for sale.
                     reply.setPerformative(ACLMessage.REFUSE);

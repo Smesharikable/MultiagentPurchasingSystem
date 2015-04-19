@@ -125,7 +125,7 @@ public class Customer extends Agent {
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
-        goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
+        goodNeedsJSON = jsonSerializer.exclude("*.class").serialize(goodNeeds);
 //        WAIT_FOR_SUPPLIERS_TIMEOUT_MS = DataGenerator.randLong(10000, 60000);
     }
 
@@ -214,7 +214,7 @@ public class Customer extends Agent {
                         if (reply.getPerformative() == ACLMessage.PROPOSE) {
                             // This is an offer
                             HashMap<String, PurchaseProposal> goodsInfo =
-                                    supplierProposeDeserializer.deserialize(reply.getContent());
+                                    supplierProposeDeserializer.use("values", PurchaseProposal.class).deserialize(reply.getContent());
                             //TODO: Add needs check.
                             for (Map.Entry<String, PurchaseProposal> entry: goodsInfo.entrySet()) {
                                 purchase.addProposal(entry.getKey(), entry.getValue());
@@ -362,7 +362,7 @@ public class Customer extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 // CFP Message received. Process it
-                Map<String, GoodNeed> goodsRequest = buyerProposeDeserializer.deserialize(msg.getContent());
+                Map<String, GoodNeed> goodsRequest = buyerProposeDeserializer.use("values", GoodNeed.class).deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
 
                 Map<String, Double> goodPrices = new HashMap<>();
@@ -380,7 +380,7 @@ public class Customer extends Agent {
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
                     reply.setConversationId(currentPurchaseConvId);
-                    reply.setContent(jsonSerializer.serialize(purchaseInfo));
+                    reply.setContent(jsonSerializer.exclude("*.class").serialize(purchaseInfo));
                 }
                 else {
                     // We don't have requested goods.
@@ -414,7 +414,7 @@ public class Customer extends Agent {
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 //TODO: add timestamp check.
-                Demand demand = demandDeserializer.deserialize(msg.getContent());
+                Demand demand = demandDeserializer.deserialize(msg.getContent(), Demand.class);
                 boolean success = purchase.addDemand(msg.getSender(), demand.getGood(), demand.getCount());
                 ACLMessage reply = msg.createReply();
                 if (success) {
