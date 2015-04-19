@@ -32,7 +32,7 @@ public class Tester extends Agent{
                 testDataFilename = (String) args[0];
             }
 
-            Scanner fileScanner = new Scanner(new File(testDataFilename)).useDelimiter("\\Z");
+            Scanner fileScanner = new Scanner(new File("."+ File.separator+"test"+File.separator+testDataFilename)).useDelimiter("\\Z");
             String testData = fileScanner.next();
             fileScanner.close();
 
@@ -76,7 +76,7 @@ public class Tester extends Agent{
             }
 
         } catch (FileNotFoundException e) {
-            logger.log(Logger.WARNING, "testData.json not found");
+            logger.log(Logger.WARNING, "*.json not found");
         } catch (StaleProxyException e) {
             logger.log(Logger.WARNING, e.toString());
         }

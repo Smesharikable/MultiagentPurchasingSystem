@@ -31,6 +31,7 @@ public class Customer extends Agent {
     private int PURCHASE_NUMBER_LIMIT = 1;
     private long PURCHASE_TIMEOUT_MS = 10000;
     private PurchaseState purchaseState = PurchaseState.NONE;
+    private String currentPurchaseConvId;
 
     private JSONSerializer jsonSerializer = new JSONSerializer();
 
@@ -124,7 +125,7 @@ public class Customer extends Agent {
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
-        goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
+        goodNeedsJSON = jsonSerializer.exclude("*.class").serialize(goodNeeds);
 //        WAIT_FOR_SUPPLIERS_TIMEOUT_MS = DataGenerator.randLong(10000, 60000);
     }
 
@@ -194,11 +195,12 @@ public class Customer extends Agent {
                     ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
                     suppliers.forEach(cfp::addReceiver);
                     cfp.setContent(goodNeedsJSON);
-                    cfp.setConversationId("wholesale-purchase");
-                    cfp.setReplyWith("cfp"+System.currentTimeMillis()); // Unique value
+                    String convId = "wholesale-purchase" + hashCode() + "_" + System.currentTimeMillis();
+                    cfp.setConversationId(convId);
+                    cfp.setReplyWith("cfp" + "_" + System.currentTimeMillis()); // Unique value
                     myAgent.send(cfp);
                     // Prepare the template to get proposals
-                    supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId("wholesale-purchase"),
+                    supplierProposalMT = MessageTemplate.and(MessageTemplate.MatchConversationId(convId),
                             MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
                     state = RECEIVE_PROPOSALS;
                     System.out.println("Customer send CFP.");
@@ -212,7 +214,7 @@ public class Customer extends Agent {
                         if (reply.getPerformative() == ACLMessage.PROPOSE) {
                             // This is an offer
                             HashMap<String, PurchaseProposal> goodsInfo =
-                                    supplierProposeDeserializer.deserialize(reply.getContent());
+                                    supplierProposeDeserializer.use("values", PurchaseProposal.class).deserialize(reply.getContent());
                             //TODO: Add needs check.
                             for (Map.Entry<String, PurchaseProposal> entry: goodsInfo.entrySet()) {
                                 purchase.addProposal(entry.getKey(), entry.getValue());
@@ -281,7 +283,7 @@ public class Customer extends Agent {
             Set<AID> buyers = purchase.getBuyers();
             ACLMessage cancelMessage = new ACLMessage(ACLMessage.CANCEL);
             //TODO: use ontology?
-            cancelMessage.setConversationId("participation");
+            cancelMessage.setConversationId(currentPurchaseConvId);
             buyers.forEach(cancelMessage::addReceiver);
             myAgent.send(cancelMessage);
         }
@@ -297,7 +299,8 @@ public class Customer extends Agent {
             purchaseDescription = new DFAgentDescription();
             ServiceDescription serviceDescription = new ServiceDescription();
             serviceDescription.setType("customer");
-            serviceDescription.setName("purchase");
+            currentPurchaseConvId = "purchase" + hashCode() + "_" + System.currentTimeMillis();
+            serviceDescription.setName(currentPurchaseConvId);
             purchaseDescription.addServices(serviceDescription);
 
             try {
@@ -352,14 +355,12 @@ public class Customer extends Agent {
 
         @Override
         public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                    MessageTemplate.MatchPerformative(ACLMessage.CFP),
-                    MessageTemplate.MatchConversationId("participation")
-            );
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.CFP);
+
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
                 // CFP Message received. Process it
-                Map<String, GoodNeed> goodsRequest = buyerProposeDeserializer.deserialize(msg.getContent());
+                Map<String, GoodNeed> goodsRequest = buyerProposeDeserializer.use("values", GoodNeed.class).deserialize(msg.getContent());
                 ACLMessage reply = msg.createReply();
 
                 Map<String, Double> goodPrices = new HashMap<>();
@@ -376,10 +377,10 @@ public class Customer extends Agent {
                     PurchaseInfo purchaseInfo = new PurchaseInfo(deliveryPeriod, goodPrices);
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
-                    reply.setContent(jsonSerializer.serialize(purchaseInfo));
+                    reply.setContent(jsonSerializer.exclude("*.class").serialize(purchaseInfo));
                 }
                 else {
-                    // We have not requested goods.
+                    // We don't have requested goods.
                     reply.setPerformative(ACLMessage.REFUSE);
                     reply.setContent("not-available");
                 }
@@ -403,15 +404,12 @@ public class Customer extends Agent {
     private class AddBuyerToParty extends Behaviour {
         @Override
         public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                    MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
-                    MessageTemplate.MatchConversationId("participation")
-            );
+            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL);
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
-                //TODO: add timestamp check.
-                Demand demand = demandDeserializer.deserialize(msg.getContent());
-                boolean success = purchase.addDemand(msg.getSender(), demand.getGood(), demand.getCount());
+                Demand demand = demandDeserializer.use("orders",HashMap.class).deserialize(msg.getContent(), Demand.class);
+                //TODO: check purchase name.
+                boolean success = purchase.addDemand(msg.getSender(), demand);
                 ACLMessage reply = msg.createReply();
                 if (success) {
                     reply.setPerformative(ACLMessage.AGREE);
@@ -478,6 +476,15 @@ public class Customer extends Agent {
                 return -1;
             }
             return 0;
+        }
+
+        public boolean addDemand(AID buyer, Demand demand) {
+            Map<String, Integer> orders = demand.getOrders();
+            for (Map.Entry<String, Integer> entry: orders.entrySet()) {
+                boolean success = addDemand(buyer, entry.getKey(), entry.getValue());
+                if (!success) return false;
+            }
+            return true;
         }
 
         /**

@@ -1,33 +1,39 @@
 package study.masystems.purchasingsystem;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Buyer demand for communication between Buyer and Customer.
  */
 public class Demand {
-    private String good = null;
-    private int count = 0;
+    private String purchaseName;
+    private Map<String, Integer> orders = new HashMap<>();
 
     public Demand() {
     }
 
-    public Demand(String good, int count) {
-        this.good = good;
-        this.count = count;
+    public Demand(String purchaseName) {
+        this.purchaseName = purchaseName;
     }
 
-    public String getGood() {
-        return good;
+    public void put(String good, int quantity) {
+        orders.put(good, quantity);
     }
 
-    public void setGood(String good) {
-        this.good = good;
+    public String getPurchaseName() {
+        return purchaseName;
     }
 
-    public int getCount() {
-        return count;
+    public void setPurchaseName(String purchaseName) {
+        this.purchaseName = purchaseName;
     }
 
-    public void setCount(int count) {
-        this.count = count;
+    public Map<String, Integer> getOrders() {
+        return orders;
+    }
+
+    public void setOrders(Map<String, Integer> orders) {
+        this.orders = orders;
     }
 }
