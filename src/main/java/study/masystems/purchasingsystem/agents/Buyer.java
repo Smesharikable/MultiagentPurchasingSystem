@@ -164,7 +164,6 @@ public class Buyer extends Agent {
                 customerAgents.keySet().forEach(cfp::addReceiver);
 
                 cfp.setContent(goodNeedsJSON);
-                //TODO: use ontology?
                 String convId = "participation" + hashCode() + "_" + System.currentTimeMillis();
                 cfp.setConversationId(convId);
                 cfp.setReplyWith("cfp" + "_" + System.currentTimeMillis());

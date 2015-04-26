@@ -297,7 +297,6 @@ public class Customer extends Agent {
                             // This is an offer
                             HashMap<String, PurchaseProposal> goodsInfo =
                                     supplierProposeDeserializer.use("values", PurchaseProposal.class).deserialize(reply.getContent());
-                            //TODO: Add needs check.
                             for (Map.Entry<String, PurchaseProposal> entry : goodsInfo.entrySet()) {
                                 purchase.addProposal(entry.getKey(), entry.getValue());
                             }
@@ -340,7 +339,6 @@ public class Customer extends Agent {
             super(a);
             addSubBehaviour(new OpenPurchase(myAgent));
             addSubBehaviour(new ClosePurchase(myAgent, purchasePeriod));
-            //TODO: add PlaceOrder and ConfirmPurchase.
             addSubBehaviour(new PlaceOrderBehaviour(RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS));
             addSubBehaviour(new SendConfirmation());
             myAgent.addBehaviour(createCommunicationWithBuyersBehaviour());
@@ -364,7 +362,6 @@ public class Customer extends Agent {
                     case (FAIL): {
                         cancelPurchase();
                         if (purchaseCounter == PURCHASE_NUMBER_LIMIT) {
-                            cancelPurchase();
                             skipNext();
                             status = ABORT;
                         } else {
@@ -391,8 +388,6 @@ public class Customer extends Agent {
 
         @Override
         public void reset() {
-            super.reset();
-            sendCancelMessageToBuyers();
             status = SUCCESS;
         }
 
@@ -433,8 +428,7 @@ public class Customer extends Agent {
                 DFService.register(myAgent, purchaseDescription);
                 purchaseState = PurchaseState.OPEN;
             } catch (FIPAException e) {
-                // TODO: Log error.
-                e.printStackTrace();
+                logger.log(Level.SEVERE, "Error while register purchase, agent: " + myAgent.getLocalName());
             }
         }
     }
