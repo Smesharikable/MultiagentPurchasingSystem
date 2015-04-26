@@ -32,7 +32,8 @@ public class Tester extends Agent{
                 testDataFilename = (String) args[0];
             }
 
-            Scanner fileScanner = new Scanner(new File(testDataFilename)).useDelimiter("\\Z");
+            String filename = String.join(File.separator, ".", "src", "test", "configuration", testDataFilename);
+            Scanner fileScanner = new Scanner(new File(filename)).useDelimiter("\\Z");
             String testData = fileScanner.next();
             fileScanner.close();
 
