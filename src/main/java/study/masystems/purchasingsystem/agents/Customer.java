@@ -148,7 +148,6 @@ public class Customer extends Agent {
             }
         }
         goodNeedsJSON = jsonSerializer.exclude("*.class").serialize(goodNeeds);
-//        WAIT_FOR_SUPPLIERS_TIMEOUT_MS = DataGenerator.randLong(10000, 60000);
     }
 
     private void unsubscribeFromSuppliers() {

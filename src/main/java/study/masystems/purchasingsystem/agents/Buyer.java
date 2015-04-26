@@ -6,6 +6,7 @@ import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.Behaviour;
+import jade.core.behaviours.ParallelBehaviour;
 import jade.core.behaviours.SequentialBehaviour;
 import jade.core.behaviours.WakerBehaviour;
 import jade.domain.DFService;
@@ -24,6 +25,7 @@ import study.masystems.purchasingsystem.utils.DataGenerator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
 
 /**
  * Purchase participant, that wants to buy some goods.
@@ -32,13 +34,16 @@ public class Buyer extends Agent {
     private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS = 5000;
     private long WAIT_FOR_CUSTOMERS = 5000;
     private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<>();
-    private JSONSerializer jsonDemandSerializer = new JSONSerializer();
+    private JSONSerializer jsonSerializer = new JSONSerializer().exclude("*.class");
 
     private Map<String, GoodNeed> goodNeeds;
-    private String goodNeedsJSON;
     private double money;
-    private HashMap<AID, String> customerAgents;
+    private HashMap<AID, String> customerAgents = new HashMap<>();
     private ProposalTable proposalTable = new ProposalTable();
+
+    private static final int SUCCESS = 0;
+    private static final int FAIL = 1;
+    private static final int ABORT = 2;
 
     private static Logger logger = Logger.getMyLogger("Buyer");
 
@@ -77,13 +82,8 @@ public class Buyer extends Agent {
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
-        goodNeedsJSON = new JSONSerializer().exclude("*.class").serialize(goodNeeds);
 
-        SequentialBehaviour buyerBehaviour = new SequentialBehaviour();
-        buyerBehaviour.addSubBehaviour(new SearchCustomers(this, WAIT_FOR_CUSTOMERS));
-        buyerBehaviour.addSubBehaviour(new ChooseCustomer(WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS));
-        buyerBehaviour.addSubBehaviour(new ParticipateInPurchases());
-
+        SequentialBehaviour buyerBehaviour = createBuyerBehaviour(WAIT_FOR_CUSTOMERS, getGoodNeeds().keySet());
         addBehaviour(buyerBehaviour);
     }
 
@@ -91,9 +91,49 @@ public class Buyer extends Agent {
         System.out.println("Buyer-agent " + this.getAID().getName() + " terminating.");
     }
 
+    private BuyerBehaviour createBuyerBehaviour(long waitForCustomers,  Set<String> goods) {
+        BuyerBehaviour buyerBehaviour = new BuyerBehaviour();
+        buyerBehaviour.addSubBehaviour(new SearchCustomers(this, waitForCustomers));
+        buyerBehaviour.addSubBehaviour(new ChooseCustomer(WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS, goods));
+        buyerBehaviour.addSubBehaviour(new AcceptProposals());
+        return buyerBehaviour;
+    }
+
+    private class BuyerBehaviour extends SequentialBehaviour {
+        @Override
+        protected void scheduleNext(boolean currentDone, int currentResult) {
+            super.scheduleNext(currentDone, currentResult);
+            if (currentDone) {
+                switch (currentResult) {
+                    case FAIL:
+                        reset();
+                        logger.log(Level.INFO, String.format("%s reset Buyer behaviour", getLocalName()));
+                        break;
+                    case ABORT:
+                        doDelete();
+                        break;
+                }
+            }
+        }
+    }
+
     private class SearchCustomers extends WakerBehaviour {
+        private int status = SUCCESS;
+
         public SearchCustomers(Agent a, long timeout) {
             super(a, timeout);
+        }
+
+        @Override
+        public void reset(long timeout) {
+            super.reset(timeout);
+            status = SUCCESS;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            status = SUCCESS;
         }
 
         @Override
@@ -106,8 +146,7 @@ public class Buyer extends Agent {
 
             try {
                 DFAgentDescription[] fe = DFService.search(myAgent, template);
-                System.out.println("Buyer found the following seller agents:");
-                customerAgents = new HashMap<>();
+                logger.log(Level.INFO, String.format("Buyer %s found the following seller agents:", myAgent.getLocalName()));
 
                 for (DFAgentDescription aFe : fe) {
                     String purchaseName = "";
@@ -117,22 +156,24 @@ public class Buyer extends Agent {
                         logger.log(Logger.WARNING, "Cannot find services by " + aFe.getName());
                     }
 
-                    //while (allServices.hasNext()) {
                     purchaseName = ((ServiceDescription) allServices.next()).getName();
-                    //  if (purchaseName)
-                    //}
 
                     customerAgents.put(aFe.getName(), purchaseName);
-                    System.out.println(aFe.getName() + " purchase " + purchaseName);
+                    logger.log(Level.INFO, aFe.getName() + " purchase " + purchaseName);
                 }
 
                 if (fe.length == 0) {
-                    parent.reset();
+                    status = FAIL;
                 }
             } catch (FIPAException var5) {
-                parent.reset();
-                var5.printStackTrace();
+                logger.log(Level.SEVERE, var5.toString());
+                doDelete();
             }
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
         }
     }
 
@@ -142,9 +183,13 @@ public class Buyer extends Agent {
         private int repliesCnt = 0;
         private long period = 0;
         private long endTime = 0;
+        private String goodNeedsJSON;
 
-        public ChooseCustomer(long period) {
+        public ChooseCustomer(long period, Set<String> goods) {
             this.period = period;
+            Map<String, GoodNeed> currentNeeds = new HashMap<>();
+            goods.forEach(good -> currentNeeds.put(good, goodNeeds.get(good)));
+            this.goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
         }
 
         @Override
@@ -188,8 +233,7 @@ public class Buyer extends Agent {
                             }
                         }
                         repliesCnt++;
-                    } // TODO: add for REFUSE?
-
+                    }
                 } else {
                     this.block();
                 }
@@ -203,7 +247,7 @@ public class Buyer extends Agent {
         }
     }
 
-    private class ParticipateInPurchases extends Behaviour {
+    private class AcceptProposals extends Behaviour {
 
         @Override
         public void action() {
@@ -228,33 +272,162 @@ public class Buyer extends Agent {
                 }
             }
 
+            // Add behaviour for each purchase.
+            ParallelBehaviour joinThePurchases = new ParallelBehaviour(ParallelBehaviour.WHEN_ALL);
             purchases.forEach((customer, demand) -> {
-                ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
-                accept.setConversationId(demand.getPurchaseName() + "_" + hashCode() + System.currentTimeMillis());
-                accept.setContent(jsonDemandSerializer.exclude("*.class").serialize(demand));
-                accept.addReceiver(customer);
-
-                myAgent.send(accept);
+                joinThePurchases.addSubBehaviour(new ParticipateInPurchase(customer, demand));
             });
-
-/*            Set<Map.Entry<String, ProposalTable.CustomerProposal>> proposals = proposalTable.getEntrySet();
-            proposals.forEach(entry -> {
-                String good = entry.getKey();
-                GoodNeed goodNeed = goodNeeds.get(good);
-                Demand demand = new Demand(good, goodNeed.getQuantity());
-
-                ProposalTable.CustomerProposal proposal = entry.getValue();
-                ACLMessage reply = proposal.getMessage().createReply();
-                reply.setPerformative(ACLMessage.ACCEPT_PROPOSAL);
-                reply.setContent(jsonDemandSerializer.exclude("*.class").serialize(demand));
-
-                myAgent.send(reply);
-            });*/
+            addBehaviour(joinThePurchases);
         }
 
         @Override
         public boolean done() {
             return true;
+        }
+    }
+
+    private class ParticipateInPurchase extends SequentialBehaviour {
+        private final AID customer;
+        private final Demand demand;
+
+        public ParticipateInPurchase(AID customer, Demand demand) {
+            super();
+            this.customer = customer;
+            this.demand = demand;
+        }
+
+        @Override
+        public void onStart() {
+            super.onStart();
+            this.addSubBehaviour(new JoinThePurchase(customer, demand));
+            MessageTemplate mt = MessageTemplate.MatchConversationId(demand.getPurchaseName());
+            this.addSubBehaviour(new WaitForConfirmation(mt));
+            //TODO: Add behaviours for delivery.
+        }
+
+        @Override
+        protected void scheduleNext(boolean currentDone, int currentResult) {
+            super.scheduleNext(currentDone, currentResult);
+            if (currentDone) {
+                switch (currentResult) {
+                    case FAIL:
+                        skipNext();
+                        // Make another attempt to satisfy demand.
+                        addBehaviour(createBuyerBehaviour(0, demand.getOrders().keySet()));
+                        break;
+                    case ABORT:
+                        doDelete();
+                        break;
+                }
+            }
+        }
+    }
+
+    private class JoinThePurchase extends Behaviour {
+        private final AID customer;
+        private final Demand demand;
+        private int step = 0;
+        private MessageTemplate mt;
+        private boolean replyReceived = false;
+        private long period = 0;
+        private long endTime = 0;
+
+        private final int STEP_SEND = 0;
+        private final int STEP_RECEIVE = 1;
+
+        private int status = SUCCESS;
+
+        /**
+         * Send ACCEPT_PROPOSAL to customer and handle replies.
+         * @param customer Purchase owner.
+         * @param demand List of goods with quantities.
+         */
+        public JoinThePurchase(AID customer, Demand demand) {
+            this.customer = customer;
+            this.demand = demand;
+        }
+
+        @Override
+        public void action() {
+            switch (step) {
+                case STEP_SEND:
+                    ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
+                    accept.setConversationId(demand.getPurchaseName());
+                    accept.setContent(jsonSerializer.serialize(demand));
+                    accept.addReceiver(customer);
+                    myAgent.send(accept);
+
+                    mt = MessageTemplate.MatchConversationId(accept.getConversationId());
+                    step ++;
+                    break;
+                case STEP_RECEIVE:
+                    ACLMessage message = receive(mt);
+                    if (message != null) {
+                        final int performative = message.getPerformative();
+                        switch (performative) {
+                            case ACLMessage.AGREE:
+                                break;
+                            default:
+                                //TODO: Reset global behaviour.
+                                status = FAIL;
+                                break;
+                        }
+                        replyReceived = true;
+                    } else {
+                        block();
+                    }
+                    break;
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return replyReceived;
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
+        }
+    }
+
+    private class WaitForConfirmation extends Behaviour {
+        private final MessageTemplate mt;
+        private boolean purchaseCompleted = false;
+        private int status = SUCCESS;
+
+        public WaitForConfirmation(MessageTemplate mt) {
+            this.mt = mt;
+        }
+
+        @Override
+        public void action() {
+            ACLMessage message = receive(mt);
+            if (mt != null) {
+                final int performative = message.getPerformative();
+                switch (performative) {
+                    case ACLMessage.CONFIRM:
+                        //TODO: Delivery
+                        break;
+                    case  ACLMessage.CANCEL:
+                        //TODO: Restart global behaviour;
+                        status = FAIL;
+                        break;
+                }
+                purchaseCompleted = true;
+            } else {
+                block();
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return purchaseCompleted;
+        }
+
+        @Override
+        public int onEnd() {
+            return status;
         }
     }
 
