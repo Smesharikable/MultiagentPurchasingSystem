@@ -1,0 +1,79 @@
+{
+  "buyer_1":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":1,
+        "deliveryPeriodDays":2
+      }
+    },
+    "money":100,
+    "class":"study.masystems.purchasingsystem.agents.Buyer"
+  },
+
+  "buyer_2":{
+    "goodNeeds":{
+      "socks":{
+        "quantity":10,
+        "deliveryPeriodDays":2
+      }
+    },
+    "money":100,
+    "class":"study.masystems.purchasingsystem.agents.Buyer"
+  },
+
+  "buyer_3":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":1,
+        "deliveryPeriodDays":2
+      }
+    },
+    "money":100,
+    "class":"study.masystems.purchasingsystem.agents.Buyer"
+  },
+
+  "customer_1":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":1,
+        "deliveryPeriodDays":3
+      },
+      "socks":{
+        "quantity":10,
+        "deliveryPeriodDays":3
+      }
+    },
+    "money":200,
+    "class":"study.masystems.purchasingsystem.agents.Customer"
+  },
+
+  "customer_2":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":7,
+        "deliveryPeriodDays":3
+      },
+      "socks":{
+        "quantity":10,
+        "deliveryPeriodDays":3
+      }
+    },
+    "money":200,
+    "class":"study.masystems.purchasingsystem.agents.Customer"
+  },
+
+  "supplier_1":{
+    "goods":{
+      "suit":{
+        "cost":50,
+        "minimalQuantity":7,
+        "deliveryPeriodDays":1
+      },
+      "socks":{
+        "cost":5,
+        "minimalQuantity":10
+      }
+    },
+    "class":"study.masystems.purchasingsystem.agents.Supplier"
+  }
+}

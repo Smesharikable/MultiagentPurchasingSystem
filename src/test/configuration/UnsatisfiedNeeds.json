@@ -1,0 +1,37 @@
+{
+  "buyer":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":1,
+        "deliveryPeriodDays":2
+      },
+      "socks":{
+        "quantity":1,
+        "deliveryPeriodDays":2
+      }
+    },
+    "money":100,
+    "class":"study.masystems.purchasingsystem.agents.Buyer"
+  },
+
+  "customer":{
+    "goodNeeds":{
+      "suit":{
+        "quantity":1,
+        "deliveryPeriodDays":3
+      }
+    },
+    "money":200,
+    "class":"study.masystems.purchasingsystem.agents.Customer"
+  },
+
+  "supplier":{
+    "goods":{
+      "suit":{
+        "cost":50,
+        "minimalQuantity":1,
+        "deliveryPeriodDays":1
+      }
+    },
+    "class":"study.masystems.purchasingsystem.agents.Supplier"}
+}
