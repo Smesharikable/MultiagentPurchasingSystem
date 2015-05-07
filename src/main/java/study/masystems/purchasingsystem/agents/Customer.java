@@ -33,21 +33,16 @@ public class Customer extends Agent {
     private long RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS = 2000;
     private int PURCHASE_NUMBER_LIMIT = 1;
     private long PURCHASE_TIMEOUT_MS = 10000;
-    private String currentPurchaseConvId;
 
-    private JSONSerializer jsonSerializer = new JSONSerializer();
+    private JSONSerializer jsonSerializer = new JSONSerializer().exclude("*.class");
 
     private JSONDeserializer<HashMap<String, PurchaseProposal>> supplierProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Map<String, GoodNeed>> buyerProposeDeserializer = new JSONDeserializer<>();
     private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
 
     private double money;
-    private Map<String, GoodNeed> goodNeeds;
-    private String goodNeedsJSON;
 
-    private Purchase purchase = new Purchase();
-    private DFAgentDescription purchaseDescription;
-    private PurchaseState purchaseState = PurchaseState.NONE;
+    private Purchase purchase;
 
     private List<AID> suppliers = new ArrayList<>();
     private Map<AID, ACLMessage> suppliersProposal = new HashMap<>();
@@ -59,22 +54,6 @@ public class Customer extends Agent {
 
     private static Logger logger = Logger.getMyLogger(Customer.class.getName());
     private MessageTemplate conversationWithSupplierMT;
-
-    public double getMoney() {
-        return money;
-    }
-
-    public void setMoney(double money) {
-        this.money = money;
-    }
-
-    public Map<String, GoodNeed> getGoodNeeds() {
-        return goodNeeds;
-    }
-
-    public void setGoodNeeds(Map<String, GoodNeed> goodNeeds) {
-        this.goodNeeds = goodNeeds;
-    }
 
     @Override
     protected void setup() {
@@ -117,6 +96,7 @@ public class Customer extends Agent {
                         }
                         case (ABORT): {
                             doDelete();
+                            break;
                         }
                     }
                 }
@@ -133,6 +113,7 @@ public class Customer extends Agent {
         //Check whether an agent was read from file or created manually
         //If read, then parse args.
         Object[] args = getArguments();
+        Map<String, GoodNeed> goodNeeds;
         if (args == null || args.length == 0) {
             goodNeeds = DataGenerator.getRandomGoodNeeds();
             money = DataGenerator.getRandomMoneyAmount();
@@ -147,7 +128,7 @@ public class Customer extends Agent {
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
-        goodNeedsJSON = jsonSerializer.exclude("*.class").serialize(goodNeeds);
+        purchase = new Purchase(getAID(), goodNeeds);
     }
 
     private void unsubscribeFromSuppliers() {
@@ -212,10 +193,6 @@ public class Customer extends Agent {
         return findSuppliers;
     }
 
-    private enum PurchaseState {
-        NONE, OPEN, CLOSED
-    }
-
     private class WaitForSuppliers extends WakerBehaviour {
         private int status = SUCCESS;
 
@@ -229,7 +206,7 @@ public class Customer extends Agent {
             if (suppliers.size() == 0) {
                 status = FAIL;
             } else {
-                System.out.println("Customer " + myAgent.getLocalName() + " found supplier.");
+                logger.log(Level.INFO, String.format("Customer %s found supplier.", getLocalName()));
             }
         }
 
@@ -274,7 +251,7 @@ public class Customer extends Agent {
                     // Send the cfp to all sellers
                     ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
                     suppliers.forEach(cfp::addReceiver);
-                    cfp.setContent(goodNeedsJSON);
+                    cfp.setContent(purchase.getGoodNeedsJSON());
                     String convId = "wholesale-purchase" + hashCode() + "_" + System.currentTimeMillis();
                     cfp.setConversationId(convId);
                     cfp.setReplyWith("cfp" + "_" + System.currentTimeMillis()); // Unique value
@@ -283,7 +260,7 @@ public class Customer extends Agent {
                     conversationWithSupplierMT = MessageTemplate.and(MessageTemplate.MatchConversationId(convId),
                             MessageTemplate.MatchInReplyTo(cfp.getReplyWith()));
                     state = RECEIVE_PROPOSALS;
-                    System.out.println("Customer send CFP.");
+                    logger.log(Level.INFO, String.format("Customer %s send CFP.", getLocalName()));
                     break;
                 }
                 case RECEIVE_PROPOSALS: {
@@ -302,7 +279,7 @@ public class Customer extends Agent {
                         }
                         repliesCnt++;
                         allReplies = (repliesCnt >= suppliers.size());
-                        System.out.println("Customer receive proposal.");
+                        logger.log(Level.INFO, String.format("Customer receive proposal.", getLocalName()));
                     } else {
                         block();
                     }
@@ -331,7 +308,7 @@ public class Customer extends Agent {
      */
 
     private class PurchaseOrganization extends SequentialBehaviour {
-        private int purchaseCounter = 1;
+        private int purchaseCounter = 0;
         private int status = SUCCESS;
 
         public PurchaseOrganization(Agent a, long purchasePeriod) {
@@ -360,7 +337,7 @@ public class Customer extends Agent {
                 switch (currentResult) {
                     case (FAIL): {
                         cancelPurchase();
-                        if (purchaseCounter == PURCHASE_NUMBER_LIMIT) {
+                        if (purchaseCounter >= PURCHASE_NUMBER_LIMIT) {
                             skipNext();
                             status = ABORT;
                         } else {
@@ -371,7 +348,7 @@ public class Customer extends Agent {
                     case (ABORT): {
                         cancelPurchase();
                         skipNext();
-                        if (purchaseCounter == PURCHASE_NUMBER_LIMIT) {
+                        if (purchaseCounter >= PURCHASE_NUMBER_LIMIT) {
                             status = ABORT;
                             logger.log(
                                     Level.INFO,
@@ -387,6 +364,7 @@ public class Customer extends Agent {
 
         @Override
         public void reset() {
+            super.reset();
             status = SUCCESS;
         }
 
@@ -398,7 +376,7 @@ public class Customer extends Agent {
         private void sendCancelMessageToBuyers() {
             Set<AID> buyers = purchase.getBuyers();
             ACLMessage cancelMessage = new ACLMessage(ACLMessage.CANCEL);
-            cancelMessage.setConversationId(currentPurchaseConvId);
+            cancelMessage.setConversationId(purchase.getPurchaseConvId());
             buyers.forEach(cancelMessage::addReceiver);
             myAgent.send(cancelMessage);
         }
@@ -416,16 +394,10 @@ public class Customer extends Agent {
 
         @Override
         public void action() {
-            purchaseDescription = new DFAgentDescription();
-            ServiceDescription serviceDescription = new ServiceDescription();
-            serviceDescription.setType("customer");
-            currentPurchaseConvId = "purchase" + hashCode() + "_" + System.currentTimeMillis();
-            serviceDescription.setName(currentPurchaseConvId);
-            purchaseDescription.addServices(serviceDescription);
-
+            purchase.addOwnDemand();
             try {
-                DFService.register(myAgent, purchaseDescription);
-                purchaseState = PurchaseState.OPEN;
+                purchase.register(myAgent);
+                purchase.open();
             } catch (FIPAException e) {
                 logger.log(Level.SEVERE, "Error while register purchase, agent: " + myAgent.getLocalName());
             }
@@ -448,17 +420,17 @@ public class Customer extends Agent {
         @Override
         protected void onWake() {
             super.onWake();
-            purchaseState = PurchaseState.CLOSED;
+            purchase.close();
             try {
-                DFService.deregister(myAgent, purchaseDescription);
+                purchase.deregister(myAgent);
             } catch (FIPAException e) {
                 e.printStackTrace();
             }
             if (!purchase.isFormed()) {
                 status = FAIL;
-                System.out.println("Purchase reset!");
+                logger.log(Level.INFO, String.format("%s reset purchase!", getLocalName()));
             } else {
-                System.out.println("Purchase completed");
+                logger.log(Level.INFO, String.format("%s purchase completed!", getLocalName()));
             }
         }
 
@@ -584,6 +556,8 @@ public class Customer extends Agent {
             Set<AID> buyers = purchase.getBuyers();
             ACLMessage confirmation = new ACLMessage(ACLMessage.CONFIRM);
             buyers.forEach(confirmation::addReceiver);
+            confirmation.setConversationId(purchase.getPurchaseConvId());
+            confirmation.setContent(jsonSerializer.serialize(buyers));
             myAgent.send(confirmation);
         }
     }
@@ -619,9 +593,10 @@ public class Customer extends Agent {
                 for (Map.Entry<String, GoodNeed> good : goodsRequest.entrySet()) {
                     String goodName = good.getKey();
                     PurchaseProposal purchaseProposal = purchase.purchaseTable.get(goodName);
-
-                    deliveryPeriod = Math.max(deliveryPeriod, purchaseProposal.getDeliveryPeriodDays());
-                    goodPrices.put(goodName, purchaseProposal.getCost());
+                    if (purchaseProposal != null) {
+                        deliveryPeriod = Math.max(deliveryPeriod, purchaseProposal.getDeliveryPeriodDays());
+                        goodPrices.put(goodName, purchaseProposal.getCost());
+                    }
                 }
 
                 if (goodPrices.size() > 0) {
@@ -636,7 +611,7 @@ public class Customer extends Agent {
                     reply.setContent("not-available");
                 }
                 myAgent.send(reply);
-                System.out.println("Customer replied to buyer.");
+                logger.log(Level.INFO, String.format("Customer %s replied to buyer.", getLocalName()));
             } else {
                 block();
             }
@@ -657,16 +632,20 @@ public class Customer extends Agent {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL);
             ACLMessage msg = myAgent.receive(mt);
             if (msg != null) {
-                Demand demand = demandDeserializer.use("orders",HashMap.class).deserialize(msg.getContent(), Demand.class);
-                //TODO: check purchase name.
-                boolean success = purchase.addDemand(msg.getSender(), demand);
                 ACLMessage reply = msg.createReply();
-                if (success) {
-                    reply.setPerformative(ACLMessage.AGREE);
+                final String conversationId = msg.getConversationId();
+                if (!conversationId.equals(purchase.getPurchaseConvId())|| !purchase.isOpen()) {
+                    reply.setPerformative(ACLMessage.REFUSE);
                 } else {
-                    reply.setPerformative(ACLMessage.UNKNOWN);
-                    myAgent.send(reply);
+                    Demand demand = demandDeserializer.use("orders",HashMap.class).deserialize(msg.getContent(), Demand.class);
+                    boolean success = purchase.addDemand(msg.getSender(), demand);
+                    if (success) {
+                        reply.setPerformative(ACLMessage.AGREE);
+                    } else {
+                        reply.setPerformative(ACLMessage.UNKNOWN);
+                    }
                 }
+                myAgent.send(reply);
             } else {
                 block();
             }
@@ -681,18 +660,28 @@ public class Customer extends Agent {
     @Override
     protected void takeDown() {
         super.takeDown();
-        unsubscribeFromSuppliers();
-        System.out.print(String.format("Customer %s terminate.", getAID().getName()));
+        logger.log(Level.INFO, String.format("Customer %s terminate.", getAID().getName()));
     }
 
     /**
      * Current purchase state. Maintain table of goods with proposals.
      */
-    private class Purchase {
-        Map<String, PurchaseProposal> purchaseTable = new HashMap<>();
-        Map<String, DemandTable> demandTable = new HashMap<>();
+    private static class Purchase {
+        private AID customer;
+        private Map<String, GoodNeed> goodNeeds;
+        private String goodNeedsJSON;
 
-        public Purchase() {
+        private Map<String, PurchaseProposal> purchaseTable = new HashMap<>();
+        private Map<String, DemandTable> demandTable = new HashMap<>();
+
+        private PurchaseState purchaseState = PurchaseState.NONE;
+        private String purchaseConvId = "";
+        private DFAgentDescription purchaseDescription;
+
+        public Purchase(AID customer, Map<String, GoodNeed> goodNeeds) {
+            this.customer = customer;
+            this.goodNeeds = goodNeeds;
+            this.goodNeedsJSON = (new JSONSerializer().exclude("*.class")).serialize(goodNeeds);
         }
 
         /**
@@ -729,6 +718,14 @@ public class Customer extends Agent {
             return 0;
         }
 
+        public void addOwnDemand() {
+            Demand demand = new Demand();
+            goodNeeds.forEach((good, goodNeed) -> {
+                demand.put(good, goodNeed.getQuantity());
+            });
+            addDemand(customer, demand);
+        }
+
         public boolean addDemand(AID buyer, Demand demand) {
             Map<String, Integer> orders = demand.getOrders();
             for (Map.Entry<String, Integer> entry: orders.entrySet()) {
@@ -757,8 +754,42 @@ public class Customer extends Agent {
             return true;
         }
 
+        public void register(Agent customer) throws FIPAException {
+            DFService.register(customer, getNewPurchaseDescription());
+        }
+
+        public void deregister(Agent customer) throws FIPAException {
+            DFService.deregister(customer, getPurchaseDescription());
+        }
+
         public void clear() {
             demandTable.clear();
+        }
+
+        public String getGoodNeedsJSON() {
+            return goodNeedsJSON;
+        }
+
+        public String getPurchaseConvId() {
+            return purchaseConvId;
+        }
+
+        private String getNewPurchaseConvId() {
+            purchaseConvId = "purchase" + hashCode() + "_" + System.currentTimeMillis();
+            return purchaseConvId;
+        }
+
+        private DFAgentDescription getPurchaseDescription() {
+            return purchaseDescription;
+        }
+
+        private DFAgentDescription getNewPurchaseDescription() {
+            this.purchaseDescription = new DFAgentDescription();
+            ServiceDescription serviceDescription = new ServiceDescription();
+            serviceDescription.setType("customer");
+            serviceDescription.setName(getNewPurchaseConvId());
+            this.purchaseDescription.addServices(serviceDescription);
+            return  purchaseDescription;
         }
 
         public Set<AID> getBuyers() {
@@ -829,6 +860,22 @@ public class Customer extends Agent {
                 }
             }
             return true;
+        }
+
+        private enum PurchaseState {
+            NONE, OPEN, CLOSED
+        }
+
+        public boolean isOpen() {
+            return purchaseState == PurchaseState.OPEN;
+        }
+
+        public void open() {
+            purchaseState = PurchaseState.OPEN;
+        }
+
+        public void close() {
+            purchaseState = PurchaseState.CLOSED;
         }
 
         private class DemandTable {
