@@ -5,10 +5,7 @@ import flexjson.JSONDeserializer;
 import flexjson.JSONSerializer;
 import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.Behaviour;
-import jade.core.behaviours.ParallelBehaviour;
-import jade.core.behaviours.SequentialBehaviour;
-import jade.core.behaviours.WakerBehaviour;
+import jade.core.behaviours.*;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
@@ -23,6 +20,7 @@ import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -31,8 +29,11 @@ import java.util.logging.Level;
  * Purchase participant, that wants to buy some goods.
  */
 public class Buyer extends Agent {
-    private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS = 5000;
-    private long WAIT_FOR_CUSTOMERS = 5000;
+    private long WAIT_FOR_CUSTOMER_REPLIES_PERIOD = 5000;
+    private long WAIT_FOR_CUSTOMERS_PERIOD = 5000;
+    private long CHECK_NEEDS_PERIOD = 5000;
+    private long ACTIVITY_PERIOD = 30000;
+    private int MAX_SEARCH_CUSTOMER_ITERATION = 3;
     private JSONDeserializer<PurchaseInfo> jsonDeserializer = new JSONDeserializer<>();
     private JSONSerializer jsonSerializer = new JSONSerializer().exclude("*.class");
 
@@ -40,6 +41,9 @@ public class Buyer extends Agent {
     private double money;
     private HashMap<AID, String> customerAgents = new HashMap<>();
     private ProposalTable proposalTable = new ProposalTable();
+    private Set<String> restGoods = new HashSet<>();
+
+    private boolean isActive = true;
 
     private static final int SUCCESS = 0;
     private static final int FAIL = 1;
@@ -51,18 +55,6 @@ public class Buyer extends Agent {
         return goodNeeds;
     }
 
-    public void setGoodNeeds(Map<String, GoodNeed> goodNeeds) {
-        this.goodNeeds = goodNeeds;
-    }
-
-    public double getMoney() {
-        return money;
-    }
-
-    public void setMoney(double money) {
-        this.money = money;
-    }
-
     @Override
     protected void setup() {
         //Check whether an agent was read from file or created manually
@@ -71,35 +63,71 @@ public class Buyer extends Agent {
         if (args == null || args.length == 0) {
             goodNeeds = DataGenerator.getRandomGoodNeeds();
             money = DataGenerator.getRandomMoneyAmount();
-        }
-        else {
+        } else {
             try {
                 goodNeeds = (Map<String, GoodNeed>) args[0];
                 money = (Integer) args[1];
             } catch (ClassCastException e) {
-                logger.log(Logger.WARNING, "Class Cast Exception by Buyer " + this.getAID().getName() + " creation");
+                logger.log(Logger.WARNING, String.format("Class Cast Exception by Buyer %s creation", getLocalName()));
                 goodNeeds = DataGenerator.getRandomGoodNeeds();
                 money = DataGenerator.getRandomMoneyAmount();
             }
         }
 
-        SequentialBehaviour buyerBehaviour = createBuyerBehaviour(WAIT_FOR_CUSTOMERS, getGoodNeeds().keySet());
-        addBehaviour(buyerBehaviour);
+        restGoods.addAll(goodNeeds.keySet());
+
+        addBehaviour(new BuyerBehaviour(this, WAIT_FOR_CUSTOMERS_PERIOD, WAIT_FOR_CUSTOMER_REPLIES_PERIOD, restGoods));
+
+        // Set flag when time for customer search is over.
+        addBehaviour(new WakerBehaviour(this, ACTIVITY_PERIOD) {
+            @Override
+            protected void onWake() {
+                super.onWake();
+                isActive = false;
+                logger.log(Level.INFO, String.format("Buyer %s is inactive.", getLocalName()));
+            }
+        });
     }
 
     protected void takeDown() {
-        System.out.println("Buyer-agent " + this.getAID().getName() + " terminating.");
+        logger.log(Level.INFO, String.format("Buyer-agent %s terminating.", getLocalName()));
     }
 
-    private BuyerBehaviour createBuyerBehaviour(long waitForCustomers,  Set<String> goods) {
-        BuyerBehaviour buyerBehaviour = new BuyerBehaviour();
-        buyerBehaviour.addSubBehaviour(new SearchCustomers(this, waitForCustomers));
-        buyerBehaviour.addSubBehaviour(new ChooseCustomer(WAIT_FOR_CUSTOMER_REPLIES_PERIOD_MS, goods));
-        buyerBehaviour.addSubBehaviour(new AcceptProposals());
-        return buyerBehaviour;
+    private class MakeAnotherAttempt extends WakerBehaviour {
+
+        public MakeAnotherAttempt(Agent a, long timeout) {
+            super(a, timeout);
+        }
+
+        @Override
+        protected void onWake() {
+            super.onWake();
+            if (isActive) {
+                if (!restGoods.isEmpty()) {
+                    addBehaviour(new BuyerBehaviour(myAgent, WAIT_FOR_CUSTOMERS_PERIOD,
+                            WAIT_FOR_CUSTOMER_REPLIES_PERIOD, restGoods));
+//                    restGoods.clear();
+                } else {
+                    addBehaviour(new MakeAnotherAttempt(myAgent, CHECK_NEEDS_PERIOD));
+                }
+            } else {
+                if (JoinThePurchasesBehaviour.getInstanceCount() == 0) {
+                    // We purchase all that we can.
+                    doDelete();
+                }
+                // Stop attempting to find a customer.
+            }
+        }
     }
 
     private class BuyerBehaviour extends SequentialBehaviour {
+        public BuyerBehaviour(Agent a, long waitForCustomers, long waitForCustomerReplies, Set<String> goods) {
+            super(a);
+            this.addSubBehaviour(new SearchCustomers(myAgent, waitForCustomers));
+            this.addSubBehaviour(new ChooseCustomer(waitForCustomerReplies, goods));
+            this.addSubBehaviour(new AcceptProposals());
+        }
+
         @Override
         protected void scheduleNext(boolean currentDone, int currentResult) {
             super.scheduleNext(currentDone, currentResult);
@@ -109,8 +137,9 @@ public class Buyer extends Agent {
                         reset();
                         logger.log(Level.INFO, String.format("%s reset Buyer behaviour", getLocalName()));
                         break;
-                    case ABORT:
-                        doDelete();
+                    case ABORT: // We can't find any customer.
+                        skipNext();
+                        addBehaviour(new MakeAnotherAttempt(myAgent, CHECK_NEEDS_PERIOD));
                         break;
                 }
             }
@@ -119,6 +148,7 @@ public class Buyer extends Agent {
 
     private class SearchCustomers extends WakerBehaviour {
         private int status = SUCCESS;
+        private int count = 0;
 
         public SearchCustomers(Agent a, long timeout) {
             super(a, timeout);
@@ -139,6 +169,7 @@ public class Buyer extends Agent {
         @Override
         protected void onWake() {
             super.onWake();
+            count++;
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription templateSD = new ServiceDescription();
             templateSD.setType("customer");
@@ -149,7 +180,7 @@ public class Buyer extends Agent {
                 logger.log(Level.INFO, String.format("Buyer %s found the following seller agents:", myAgent.getLocalName()));
 
                 for (DFAgentDescription aFe : fe) {
-                    String purchaseName = "";
+                    String purchaseName;
 
                     Iterator allServices = aFe.getAllServices();
                     if (!allServices.hasNext()) {
@@ -165,9 +196,12 @@ public class Buyer extends Agent {
                 if (fe.length == 0) {
                     status = FAIL;
                 }
+                if (count >= MAX_SEARCH_CUSTOMER_ITERATION) {
+                    status = ABORT;
+                }
             } catch (FIPAException var5) {
                 logger.log(Level.SEVERE, var5.toString());
-                doDelete();
+                status = ABORT;
             }
         }
 
@@ -189,13 +223,20 @@ public class Buyer extends Agent {
             this.period = period;
             Map<String, GoodNeed> currentNeeds = new HashMap<>();
             goods.forEach(good -> currentNeeds.put(good, goodNeeds.get(good)));
-            this.goodNeedsJSON = jsonSerializer.serialize(goodNeeds);
+            this.goodNeedsJSON = jsonSerializer.serialize(currentNeeds);
         }
 
         @Override
         public void onStart() {
             super.onStart();
             endTime = System.currentTimeMillis() + period;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            repliesCnt = 0;
+            step = 0;
         }
 
         @Override
@@ -252,7 +293,7 @@ public class Buyer extends Agent {
         @Override
         public void action() {
             // Accept chosen proposals.
-            System.out.println("Buyer accept proposal.");
+            logger.log(Level.INFO, String.format("%s accept proposal.", getLocalName()));
             Map<AID, Demand> purchases = new HashMap<>();
 
             for (Map.Entry<String, ProposalTable.CustomerProposal> entry: proposalTable.getEntrySet()) {
@@ -270,19 +311,55 @@ public class Buyer extends Agent {
                     GoodNeed goodNeed = goodNeeds.get(good);
                     demand.put(good, goodNeed.getQuantity());
                 }
+                restGoods.removeAll(demand.getOrders().keySet());
             }
+            customerAgents.clear();
 
             // Add behaviour for each purchase.
-            ParallelBehaviour joinThePurchases = new ParallelBehaviour(ParallelBehaviour.WHEN_ALL);
-            purchases.forEach((customer, demand) -> {
-                joinThePurchases.addSubBehaviour(new ParticipateInPurchase(customer, demand));
-            });
-            addBehaviour(joinThePurchases);
+            ParallelBehaviour joinThePurchases = new JoinThePurchasesBehaviour(ParallelBehaviour.WHEN_ALL);
+            purchases.forEach((customer, demand) ->
+                    joinThePurchases.addSubBehaviour(new ParticipateInPurchase(customer, demand))
+            );
+            SequentialBehaviour purchase = new SequentialBehaviour();
+            purchase.addSubBehaviour(joinThePurchases);
+            purchase.addSubBehaviour(new CheckNeeds());
+
+            addBehaviour(purchase);
+
+            addBehaviour(new MakeAnotherAttempt(myAgent, CHECK_NEEDS_PERIOD));
         }
 
         @Override
         public boolean done() {
             return true;
+        }
+    }
+
+    private static class JoinThePurchasesBehaviour extends ParallelBehaviour {
+        static int instanceCount = 0;
+
+        public JoinThePurchasesBehaviour() {
+            instanceCount++;
+        }
+
+        public JoinThePurchasesBehaviour(int endCondition) {
+            super(endCondition);
+            instanceCount++;
+        }
+
+        public JoinThePurchasesBehaviour(Agent a, int endCondition) {
+            super(a, endCondition);
+            instanceCount++;
+        }
+
+        public static int getInstanceCount() {
+            return instanceCount;
+        }
+
+        @Override
+        public int onEnd() {
+            instanceCount--;
+            return super.onEnd();
         }
     }
 
@@ -294,11 +371,6 @@ public class Buyer extends Agent {
             super();
             this.customer = customer;
             this.demand = demand;
-        }
-
-        @Override
-        public void onStart() {
-            super.onStart();
             this.addSubBehaviour(new JoinThePurchase(customer, demand));
             MessageTemplate mt = MessageTemplate.MatchConversationId(demand.getPurchaseName());
             this.addSubBehaviour(new WaitForConfirmation(mt));
@@ -313,10 +385,10 @@ public class Buyer extends Agent {
                     case FAIL:
                         skipNext();
                         // Make another attempt to satisfy demand.
-                        addBehaviour(createBuyerBehaviour(0, demand.getOrders().keySet()));
+                        restGoods.addAll(demand.getOrders().keySet());
                         break;
                     case ABORT:
-                        doDelete();
+                        logger.log(Level.SEVERE, "Participation in purchase has been aborted.");
                         break;
                 }
             }
@@ -345,6 +417,12 @@ public class Buyer extends Agent {
         public JoinThePurchase(AID customer, Demand demand) {
             this.customer = customer;
             this.demand = demand;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            status = SUCCESS;
         }
 
         @Override
@@ -401,13 +479,21 @@ public class Buyer extends Agent {
         }
 
         @Override
+        public void reset() {
+            super.reset();
+            status = SUCCESS;
+            purchaseCompleted = false;
+        }
+
+        @Override
         public void action() {
             ACLMessage message = receive(mt);
-            if (mt != null) {
+            if (message != null) {
                 final int performative = message.getPerformative();
                 switch (performative) {
                     case ACLMessage.CONFIRM:
                         //TODO: Delivery
+
                         break;
                     case  ACLMessage.CANCEL:
                         //TODO: Restart global behaviour;
@@ -431,7 +517,19 @@ public class Buyer extends Agent {
         }
     }
 
-    private class ProposalTable {
+    /**
+     * Delete the buyer after purchase, if there no more needs.
+     */
+    private class CheckNeeds extends OneShotBehaviour {
+        @Override
+        public void action() {
+            if (goodNeeds.isEmpty()) {
+                doDelete();
+            }
+        }
+    }
+
+    private class   ProposalTable {
         private Map<String, CustomerProposal> proposalMap = new HashMap<>();
 
         public ProposalTable() {
