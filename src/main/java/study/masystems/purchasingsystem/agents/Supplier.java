@@ -29,6 +29,8 @@ public class Supplier extends Agent {
     private JSONDeserializer<Map<String, Integer>> orderDeserializer = new JSONDeserializer<>();
     private HashMap<String, GoodInformation> goods;
 
+    private static Logger logger = Logger.getMyLogger(Supplier.class.getName());
+
     public HashMap<String, GoodInformation> getGoods() {
         return goods;
     }
@@ -36,8 +38,6 @@ public class Supplier extends Agent {
     public void setGoods(HashMap<String, GoodInformation> goods) {
         this.goods = goods;
     }
-
-    private static Logger logger = Logger.getMyLogger(Supplier.class.getName());
 
     @Override
     protected void setup() {
