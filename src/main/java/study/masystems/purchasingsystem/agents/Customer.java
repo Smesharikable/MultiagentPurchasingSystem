@@ -13,10 +13,12 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
 import jade.util.Logger;
+import org.jgrapht.alg.FloydWarshallShortestPaths;
 import study.masystems.purchasingsystem.Demand;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
 import study.masystems.purchasingsystem.PurchaseProposal;
+import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.*;
@@ -41,7 +43,7 @@ public class Customer extends Agent {
     private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
 
     private double money;
-
+    private FloydWarshallShortestPaths<Integer, WeightedEdge> cityPaths;
     private Purchase purchase;
 
     private List<AID> suppliers = new ArrayList<>();
@@ -119,8 +121,9 @@ public class Customer extends Agent {
             money = DataGenerator.getRandomMoneyAmount();
         } else {
             try {
-                goodNeeds = (Map<String, GoodNeed>) args[0];
-                money = (Integer) args[1];
+                cityPaths = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
+                goodNeeds = (Map<String, GoodNeed>) args[1];
+                money = (Integer) args[2];
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Customer " + this.getAID().getName() + " creation");
 
