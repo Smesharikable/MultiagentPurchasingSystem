@@ -6,9 +6,14 @@ import jade.util.Logger;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
+import org.jgrapht.GraphPath;
+import org.jgrapht.alg.FloydWarshallShortestPaths;
+import org.jgrapht.graph.SimpleWeightedGraph;
 import org.json.JSONObject;
+import study.masystems.purchasingsystem.CityGraphBuilder;
 import study.masystems.purchasingsystem.GoodInformation;
 import study.masystems.purchasingsystem.GoodNeed;
+import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -42,6 +47,12 @@ public class Tester extends Agent{
             String JSONAgentString;
             AgentController newAgent;
 
+            SimpleWeightedGraph<Integer, WeightedEdge> graph = new CityGraphBuilder().read();
+            FloydWarshallShortestPaths<Integer, WeightedEdge> shortestPaths
+                    = new FloydWarshallShortestPaths<>(graph);
+            final GraphPath<Integer, WeightedEdge> shortestPath = shortestPaths.getShortestPath(7, 19);
+
+
             for (String agentName : agents.keySet())
             {
                 JSONObject JSONAgent = agents.getJSONObject(agentName);
@@ -56,7 +67,7 @@ public class Tester extends Agent{
                                 .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
 
-                        newAgent = container.createNewAgent(agentName, className, new Object[]{goodNeeds, money});
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money});
                         newAgent.start();
                         break;
 

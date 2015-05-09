@@ -14,9 +14,11 @@ import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
 import jade.util.leap.Iterator;
+import org.jgrapht.alg.FloydWarshallShortestPaths;
 import study.masystems.purchasingsystem.Demand;
 import study.masystems.purchasingsystem.GoodNeed;
 import study.masystems.purchasingsystem.PurchaseInfo;
+import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
 import java.util.HashMap;
@@ -39,6 +41,7 @@ public class Buyer extends Agent {
 
     private Map<String, GoodNeed> goodNeeds;
     private double money;
+    private FloydWarshallShortestPaths<Integer, WeightedEdge> cityPaths;
     private HashMap<AID, String> customerAgents = new HashMap<>();
     private ProposalTable proposalTable = new ProposalTable();
     private Set<String> restGoods = new HashSet<>();
@@ -65,8 +68,9 @@ public class Buyer extends Agent {
             money = DataGenerator.getRandomMoneyAmount();
         } else {
             try {
-                goodNeeds = (Map<String, GoodNeed>) args[0];
-                money = (Integer) args[1];
+                cityPaths = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
+                goodNeeds = (Map<String, GoodNeed>) args[1];
+                money = (Integer) args[2];
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, String.format("Class Cast Exception by Buyer %s creation", getLocalName()));
                 goodNeeds = DataGenerator.getRandomGoodNeeds();

@@ -1,16 +1,10 @@
 package study.masystem.purchasingsystem;
 
 
-import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
-import com.mxgraph.layout.mxOrganicLayout;
-import com.mxgraph.layout.mxPartitionLayout;
-import com.mxgraph.layout.mxStackLayout;
-import com.mxgraph.layout.orthogonal.mxOrthogonalLayout;
 import com.mxgraph.model.mxICell;
 import com.mxgraph.swing.mxGraphComponent;
 import com.mxgraph.util.mxConstants;
 import com.mxgraph.view.mxGraph;
-import com.mxgraph.view.mxStylesheet;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
 import org.jgrapht.ext.JGraphXAdapter;
@@ -20,12 +14,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Scanner;
 
 public class GraphBuild {
     public static void main(String[] args) {
@@ -72,7 +64,7 @@ public class GraphBuild {
 //        partitionLayout(jGraphXAdapter, graphComponent);
 //        orthogonalLayout(jGraphXAdapter, graphComponent);
 //        stackLayout(jGraphXAdapter, graphComponent);
-        organicLayout(jGraphXAdapter, graphComponent);
+//        organicLayout(jGraphXAdapter, graphComponent);
 
         FloydWarshallShortestPaths<Integer, WeightedEdge> floydWarshallShortestPaths
                 = new FloydWarshallShortestPaths<>(simpleWeightedGraph);
@@ -89,7 +81,7 @@ public class GraphBuild {
         graphComponent.refresh();
     }
     
-    private static JFrame createFrame() {
+   /* private static JFrame createFrame() {
         JFrame jFrame = new JFrame();
         jFrame.setTitle("JGraphT Adapter to JGraph Demo");
         jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -137,6 +129,6 @@ public class GraphBuild {
         mxHierarchicalLayout hierarchicalLayout = new mxHierarchicalLayout(graph);
         hierarchicalLayout.execute(graph.getDefaultParent());
         jFrame.setVisible(true);
-    }
+    }*/
 
 }
