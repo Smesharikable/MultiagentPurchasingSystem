@@ -79,10 +79,17 @@ public class Tester extends Agent{
                             constants = new JSONDeserializer<BuyerConstants>()
                                             .deserialize(JSONConstants.toString(), BuyerConstants.class);
                         }
-                        //JSONObject JSONPath = JSONAgent.getJSONObject("path");
-                        //Object cityPath = new JSONDeserializer<CityPath>().deserialize(JSONPath.toString());
 
-                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money, null, constants});
+                        JSONObject JSONPath = null;
+                        Object cityPath = null;
+                        if (JSONAgent.has("path")) {
+                            JSONPath = JSONAgent.getJSONObject("path");
+                        }
+                        if (JSONPath != null) {
+                            cityPath = new JSONDeserializer<CityPath>().deserialize(JSONPath.toString(), CityPath.class);
+                        }
+
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money, cityPath, constants});
                         newAgent.start();
 
                         try {

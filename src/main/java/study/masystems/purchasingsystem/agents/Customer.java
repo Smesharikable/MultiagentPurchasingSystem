@@ -122,7 +122,7 @@ public class Customer extends Agent {
                 city = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
                 goodNeeds = (Map<String, GoodNeed>) args[1];
                 money = (Integer) args[2];
-                //route = (CityPath) args[3];
+                route = (CityPath) args[3];
                 CustomerConstants cc = (CustomerConstants) args[4];
 
                 if (cc != null) {
