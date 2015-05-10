@@ -14,10 +14,7 @@ import jade.lang.acl.MessageTemplate;
 import jade.proto.SubscriptionInitiator;
 import jade.util.Logger;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
-import study.masystems.purchasingsystem.Demand;
-import study.masystems.purchasingsystem.GoodNeed;
-import study.masystems.purchasingsystem.PurchaseInfo;
-import study.masystems.purchasingsystem.PurchaseProposal;
+import study.masystems.purchasingsystem.*;
 import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
@@ -43,7 +40,8 @@ public class Customer extends Agent {
     private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
 
     private double money;
-    private FloydWarshallShortestPaths<Integer, WeightedEdge> cityPaths;
+    private FloydWarshallShortestPaths<Integer, WeightedEdge> city;
+    private CityPath route;
     private Purchase purchase;
 
     private List<AID> suppliers = new ArrayList<>();
@@ -121,9 +119,20 @@ public class Customer extends Agent {
             money = DataGenerator.getRandomMoneyAmount();
         } else {
             try {
-                cityPaths = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
+                city = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
                 goodNeeds = (Map<String, GoodNeed>) args[1];
                 money = (Integer) args[2];
+                //route = (CityPath) args[3];
+                CustomerConstants cc = (CustomerConstants) args[4];
+
+                if (cc != null) {
+                    this.PURCHASE_TIMEOUT_MS = cc.getPurchaseTimeout();
+                    this.PURCHASE_NUMBER_LIMIT = cc.getPurchaseNumberLimit();
+                    this.RECEIVE_SUPPLIERS_PROPOSAL_TIMEOUT_MS = cc.getSupPropTimeout();
+                    this.RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS = cc.getSupAgreeTimeout();
+                    this.WAIT_FOR_SUPPLIERS_LIMIT = cc.getWaitForSuppliresLimit();
+                    this.WAIT_FOR_SUPPLIERS_TIMEOUT_MS = cc.getSupTimeout();
+                }
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, "Class Cast Exception by Customer " + this.getAID().getName() + " creation");
 

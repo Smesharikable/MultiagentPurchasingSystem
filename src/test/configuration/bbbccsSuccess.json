@@ -58,6 +58,14 @@
         "deliveryPeriodDays":3
       }
     },
+    "constants" : {
+      "purchaseNumberLimit":1,
+      "waitForSuppliersLimit":3,
+      "supTimeout":2000,
+      "supPropTimeout":2000,
+      "supAgreeTimeout":2000,
+      "purchaseTimeout":2000
+    },
     "money":200,
     "class":"study.masystems.purchasingsystem.agents.Customer"
   },
