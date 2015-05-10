@@ -66,7 +66,8 @@ public class Tester extends Agent{
                 switch (className){
                     case "study.masystems.purchasingsystem.agents.Customer":
                         if (JSONConstants != null) {
-                            constants = new JSONDeserializer<CustomerConstants>().deserialize(JSONConstants.toString());
+                            constants = new JSONDeserializer<CustomerConstants>()
+                                            .deserialize(JSONConstants.toString(), CustomerConstants.class);
                         }
                     case "study.masystems.purchasingsystem.agents.Buyer":
                         JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
@@ -75,7 +76,8 @@ public class Tester extends Agent{
                                 .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
                         if (JSONConstants != null && constants == null) {
-                            constants = new JSONDeserializer<BuyerConstants>().deserialize(JSONConstants.toString());
+                            constants = new JSONDeserializer<BuyerConstants>()
+                                            .deserialize(JSONConstants.toString(), BuyerConstants.class);
                         }
                         //JSONObject JSONPath = JSONAgent.getJSONObject("path");
                         //Object cityPath = new JSONDeserializer<CityPath>().deserialize(JSONPath.toString());

@@ -80,6 +80,9 @@ public class Buyer extends Agent {
                     this.WAIT_FOR_CUSTOMERS_PERIOD = bc.getCustomerPeriod();
                     this.MAX_SEARCH_CUSTOMER_ITERATION = bc.getSearchCustomerIteration();
                 }
+
+
+
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, String.format("Class Cast Exception by Buyer %s creation", getLocalName()));
                 goodNeeds = DataGenerator.getRandomGoodNeeds();
@@ -447,6 +450,14 @@ public class Buyer extends Agent {
                     accept.setContent(jsonSerializer.serialize(demand));
                     accept.addReceiver(customer);
                     myAgent.send(accept);
+
+                    AID cus1 = new AID("customer_1@"+getContainerController().getName(), true);
+                    ACLMessage mess = new ACLMessage(ACLMessage.UNKNOWN);
+                    mess.setConversationId(String.valueOf(System.currentTimeMillis()));
+                    mess.addReceiver(cus1);
+                    mess.setContent("WHAT A MESS");
+                    mess.setReplyWith("LALALA");
+                    myAgent.send(mess);
 
                     mt = MessageTemplate.MatchConversationId(accept.getConversationId());
                     step ++;
