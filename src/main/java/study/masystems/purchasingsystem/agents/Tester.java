@@ -10,9 +10,7 @@ import org.jgrapht.GraphPath;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
 import org.jgrapht.graph.SimpleWeightedGraph;
 import org.json.JSONObject;
-import study.masystems.purchasingsystem.CityGraphBuilder;
-import study.masystems.purchasingsystem.GoodInformation;
-import study.masystems.purchasingsystem.GoodNeed;
+import study.masystems.purchasingsystem.*;
 import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 
 import java.io.File;
@@ -37,11 +35,12 @@ public class Tester extends Agent{
                 testDataFilename = (String) args[0];
             }
 
-            String filename = String.join(File.separator, ".", "src", "test", "configuration", testDataFilename);
-            Scanner fileScanner = new Scanner(new File(filename)).useDelimiter("\\Z");
-            String testData = fileScanner.next();
-            fileScanner.close();
+            String testFilename = String.join(File.separator, ".", "src", "test", "configuration", testDataFilename);
 
+            Scanner testFileScanner = new Scanner(new File(testFilename)).useDelimiter("\\Z");
+            String testData = testFileScanner.next();
+            testFileScanner.close();
+            
             JSONObject agents = new JSONObject(testData);
 
             String JSONAgentString;
@@ -58,17 +57,39 @@ public class Tester extends Agent{
                 JSONObject JSONAgent = agents.getJSONObject(agentName);
                 String className = JSONAgent.getString("class");
 
+                JSONObject JSONConstants = null;
+                if (JSONAgent.has("constants")) {
+                    JSONConstants = JSONAgent.getJSONObject("constants");
+                }
+
+                Object constants = null;
                 switch (className){
                     case "study.masystems.purchasingsystem.agents.Customer":
+                        if (JSONConstants != null) {
+                            constants = new JSONDeserializer<CustomerConstants>()
+                                            .deserialize(JSONConstants.toString(), CustomerConstants.class);
+                        }
                     case "study.masystems.purchasingsystem.agents.Buyer":
                         JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
                         Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>()
                                 .use("values", GoodNeed.class)
                                 .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
+                        if (JSONConstants != null && constants == null) {
+                            constants = new JSONDeserializer<BuyerConstants>()
+                                            .deserialize(JSONConstants.toString(), BuyerConstants.class);
+                        }
+                        //JSONObject JSONPath = JSONAgent.getJSONObject("path");
+                        //Object cityPath = new JSONDeserializer<CityPath>().deserialize(JSONPath.toString());
 
-                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money});
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money, null, constants});
                         newAgent.start();
+
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         break;
 
                     case "study.masystems.purchasingsystem.agents.Supplier":
@@ -79,6 +100,11 @@ public class Tester extends Agent{
 
                         newAgent = container.createNewAgent(agentName, className, new Object[]{goods});
                         newAgent.start();
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         break;
 
                     default:

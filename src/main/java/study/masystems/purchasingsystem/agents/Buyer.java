@@ -15,9 +15,7 @@ import jade.lang.acl.MessageTemplate;
 import jade.util.Logger;
 import jade.util.leap.Iterator;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
-import study.masystems.purchasingsystem.Demand;
-import study.masystems.purchasingsystem.GoodNeed;
-import study.masystems.purchasingsystem.PurchaseInfo;
+import study.masystems.purchasingsystem.*;
 import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
@@ -41,7 +39,8 @@ public class Buyer extends Agent {
 
     private Map<String, GoodNeed> goodNeeds;
     private double money;
-    private FloydWarshallShortestPaths<Integer, WeightedEdge> cityPaths;
+    private FloydWarshallShortestPaths<Integer, WeightedEdge> city;
+    private CityPath route;
     private HashMap<AID, String> customerAgents = new HashMap<>();
     private ProposalTable proposalTable = new ProposalTable();
     private Set<String> restGoods = new HashSet<>();
@@ -68,9 +67,22 @@ public class Buyer extends Agent {
             money = DataGenerator.getRandomMoneyAmount();
         } else {
             try {
-                cityPaths = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
+                city = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
                 goodNeeds = (Map<String, GoodNeed>) args[1];
                 money = (Integer) args[2];
+                //route = (CityPath) args[3];
+                BuyerConstants bc = (BuyerConstants) args[4];
+
+                if (bc != null) {
+                    this.WAIT_FOR_CUSTOMER_REPLIES_PERIOD = bc.getCustomerRepPeriod();
+                    this.ACTIVITY_PERIOD = bc.getActivityPeriod();
+                    this.CHECK_NEEDS_PERIOD = bc.getCheckNeedsPeriod();
+                    this.WAIT_FOR_CUSTOMERS_PERIOD = bc.getCustomerPeriod();
+                    this.MAX_SEARCH_CUSTOMER_ITERATION = bc.getSearchCustomerIteration();
+                }
+
+
+
             } catch (ClassCastException e) {
                 logger.log(Logger.WARNING, String.format("Class Cast Exception by Buyer %s creation", getLocalName()));
                 goodNeeds = DataGenerator.getRandomGoodNeeds();
@@ -438,6 +450,14 @@ public class Buyer extends Agent {
                     accept.setContent(jsonSerializer.serialize(demand));
                     accept.addReceiver(customer);
                     myAgent.send(accept);
+
+                    AID cus1 = new AID("customer_1@"+getContainerController().getName(), true);
+                    ACLMessage mess = new ACLMessage(ACLMessage.UNKNOWN);
+                    mess.setConversationId(String.valueOf(System.currentTimeMillis()));
+                    mess.addReceiver(cus1);
+                    mess.setContent("WHAT A MESS");
+                    mess.setReplyWith("LALALA");
+                    myAgent.send(mess);
 
                     mt = MessageTemplate.MatchConversationId(accept.getConversationId());
                     step ++;
