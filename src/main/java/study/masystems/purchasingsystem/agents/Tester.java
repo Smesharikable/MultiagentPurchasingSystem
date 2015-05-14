@@ -50,8 +50,6 @@ public class Tester extends Agent{
             SimpleWeightedGraph<Integer, WeightedEdge> graph = new CityGraphBuilder().read();
             FloydWarshallShortestPaths<Integer, WeightedEdge> shortestPaths
                     = new FloydWarshallShortestPaths<>(graph);
-            final GraphPath<Integer, WeightedEdge> shortestPath = shortestPaths.getShortestPath(7, 19);
-
 
             for (String agentName : agents.keySet())
             {
@@ -60,14 +58,26 @@ public class Tester extends Agent{
 
                 switch (className){
                     case "study.masystems.purchasingsystem.agents.Customer":
-                    case "study.masystems.purchasingsystem.agents.Buyer":
                         JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
                         Object goodNeeds = new JSONDeserializer<Map<String, GoodNeed>>()
                                 .use("values", GoodNeed.class)
                                 .deserialize(JSONAgentString);
                         Object money = JSONAgent.getInt("money");
-
-                        newAgent = container.createNewAgent(agentName, className, new Object[]{shortestPaths, goodNeeds, money});
+                        Integer position = JSONAgent.getInt("position");
+                        newAgent = container.createNewAgent(agentName, className, new Object[]{position, goodNeeds, money});
+                        newAgent.start();
+                        break;
+                    case "study.masystems.purchasingsystem.agents.Buyer":
+                        JSONAgentString = JSONAgent.getJSONObject("goodNeeds").toString();
+                        Object goodNeedsBuyer = new JSONDeserializer<Map<String, GoodNeed>>()
+                                .use("values", GoodNeed.class)
+                                .deserialize(JSONAgentString);
+                        Object moneyBuyer = JSONAgent.getInt("money");
+                        Integer source = JSONAgent.getInt("source");
+                        Integer target = JSONAgent.getInt("target");
+                        GraphPath<Integer, WeightedEdge> path = shortestPaths.getShortestPath(source, target);
+                        newAgent = container.createNewAgent(agentName, className,
+                                new Object[]{shortestPaths, path, goodNeedsBuyer, moneyBuyer});
                         newAgent.start();
                         break;
 

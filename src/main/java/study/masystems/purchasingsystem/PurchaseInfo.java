@@ -11,6 +11,7 @@ public class PurchaseInfo {
 
     private int deliveryPeriodDays = 0;
     private Map<String, Double> goodsPrice;
+    private Map<String, Integer> goodsRest;
 
     public PurchaseInfo() {
         goodsPrice = new HashMap<String, Double>();
@@ -42,5 +43,13 @@ public class PurchaseInfo {
 
     public void setGoodsPrice(Map<String, Double> goodsPrice) {
         this.goodsPrice = goodsPrice;
+    }
+
+    public Map<String, Integer> getGoodsRest() {
+        return goodsRest;
+    }
+
+    public void setGoodsRest(Map<String, Integer> goodsRest) {
+        this.goodsRest = goodsRest;
     }
 }

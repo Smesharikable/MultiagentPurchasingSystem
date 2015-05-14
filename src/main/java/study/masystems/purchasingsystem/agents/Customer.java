@@ -11,6 +11,7 @@ import jade.domain.FIPAAgentManagement.ServiceDescription;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
+import jade.lang.acl.UnreadableException;
 import jade.proto.SubscriptionInitiator;
 import jade.util.Logger;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
@@ -21,6 +22,8 @@ import study.masystems.purchasingsystem.PurchaseProposal;
 import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 import study.masystems.purchasingsystem.utils.DataGenerator;
 
+import java.io.IOException;
+import java.io.Serializable;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
@@ -43,7 +46,7 @@ public class Customer extends Agent {
     private JSONDeserializer<Demand> demandDeserializer = new JSONDeserializer<>();
 
     private double money;
-    private FloydWarshallShortestPaths<Integer, WeightedEdge> cityPaths;
+    private Integer position;
     private Purchase purchase;
 
     private List<AID> suppliers = new ArrayList<>();
@@ -121,7 +124,7 @@ public class Customer extends Agent {
             money = DataGenerator.getRandomMoneyAmount();
         } else {
             try {
-                cityPaths = (FloydWarshallShortestPaths<Integer, WeightedEdge>) args[0];
+                position = (Integer) args[0];
                 goodNeeds = (Map<String, GoodNeed>) args[1];
                 money = (Integer) args[2];
             } catch (ClassCastException e) {
@@ -319,7 +322,8 @@ public class Customer extends Agent {
             addSubBehaviour(new OpenPurchase(myAgent));
             addSubBehaviour(new ClosePurchase(myAgent, purchasePeriod));
             addSubBehaviour(new PlaceOrderBehaviour(RECEIVE_SUPPLIERS_AGREEMENT_TIMEOUT_MS));
-            addSubBehaviour(new SendConfirmation());
+            addSubBehaviour(new SendConfirmation(this));
+            // Delivery Behaviours.
             myAgent.addBehaviour(createCommunicationWithBuyersBehaviour());
         }
 
@@ -553,15 +557,122 @@ public class Customer extends Agent {
     }
 
     private class SendConfirmation extends OneShotBehaviour {
+        private final PurchaseOrganization purchaseOrganization;
+
+        public SendConfirmation(PurchaseOrganization purchaseOrganization) {
+            this.purchaseOrganization = purchaseOrganization;
+        }
 
         @Override
         public void action() {
-            Set<AID> buyers = purchase.getBuyers();
+            HashSet<AID> buyers = purchase.getBuyers();
+            buyers.remove(getAID());
             ACLMessage confirmation = new ACLMessage(ACLMessage.CONFIRM);
             buyers.forEach(confirmation::addReceiver);
             confirmation.setConversationId(purchase.getPurchaseConvId());
             confirmation.setContent(jsonSerializer.serialize(buyers));
+            try {
+                confirmation.setContentObject(buyers);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            confirmation.addUserDefinedParameter("position", jsonSerializer.serialize(position));
             myAgent.send(confirmation);
+            purchaseOrganization.addSubBehaviour(new DeliveryBehaviour());
+        }
+    }
+
+    private class DeliveryBehaviour extends Behaviour {
+        private final String deliveryConversationID;
+        private final MessageTemplate infoMT;
+
+        public DeliveryBehaviour() {
+            this.deliveryConversationID = purchase.getPurchaseConvId() + "_delivery";
+            this.infoMT = MessageTemplate.and(MessageTemplate.MatchPerformative(ACLMessage.INFORM),
+                    MessageTemplate.MatchConversationId(deliveryConversationID));
+        }
+
+        @Override
+        public void action() {
+            final ACLMessage infoMsg = receive(infoMT);
+            if (infoMsg != null) {
+                Long requestTime = new Long(infoMsg.getContent());
+                myAgent.addBehaviour(new RequestForDeliveryList(myAgent, new Date(requestTime), infoMsg));
+            } else {
+                block();
+            }
+        }
+
+        @Override
+        public boolean done() {
+            // Check purchase.
+            return purchase.getBuyers().size() == 1;
+        }
+    }
+
+    private class RequestForDeliveryList extends WakerBehaviour {
+        private final ACLMessage infoMsg;
+
+        public RequestForDeliveryList(Agent a, Date date, ACLMessage infoMsg) {
+            super(a, date);
+            this.infoMsg = infoMsg;
+//            logger.log(Level.INFO, String.format("Current time %d, timeout %d", System.currentTimeMillis(), timeout));
+        }
+
+        @Override
+        protected void onWake() {
+            super.onWake();
+            final ACLMessage reply = infoMsg.createReply();
+            reply.setPerformative(ACLMessage.REQUEST);
+            send(reply);
+            addBehaviour(new GiveGoods(infoMsg.getSender(), infoMsg.getConversationId()));
+        }
+    }
+
+    private class GiveGoods extends Behaviour {
+        private final AID buyer;
+        private final MessageTemplate propagateMT;
+
+        private int step = 0;
+
+        public GiveGoods(AID buyer, String conversationId) {
+            this.buyer = buyer;
+            this.propagateMT = MessageTemplate.and(MessageTemplate.MatchPerformative(ACLMessage.PROPAGATE),
+                    MessageTemplate.and(MessageTemplate.MatchConversationId(conversationId),
+                            MessageTemplate.MatchSender(buyer)));
+        }
+
+        @Override
+        public void action() {
+            switch (step) {
+                case 0:
+                    final ACLMessage goodsRequest = receive(propagateMT);
+                    if (goodsRequest != null) {
+                        try {
+                            final Set<AID> buyers = (Set<AID>) goodsRequest.getContentObject();
+                            HashMap<AID, Map<String, Integer>> goodsMap = new HashMap<>();
+                            goodsMap.put(buyer, purchase.getBuyerGoods(buyer));
+                            for (AID buyer: buyers) {
+                                goodsMap.put(buyer, purchase.getBuyerGoods(buyer));
+                            }
+                            final ACLMessage reply = goodsRequest.createReply();
+                            reply.setPerformative(ACLMessage.CONFIRM);
+                            reply.setContentObject(goodsMap);
+                            send(reply);
+                        } catch (UnreadableException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        step = 1;
+                    }
+                    break;
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return step == 1;
         }
     }
 
@@ -604,6 +715,10 @@ public class Customer extends Agent {
 
                 if (goodPrices.size() > 0) {
                     PurchaseInfo purchaseInfo = new PurchaseInfo(deliveryPeriod, goodPrices);
+                    Map<String, Integer> rests = new HashMap<>();
+                    goodPrices.keySet().forEach(name -> rests.put(name, purchase.getRest(name)));
+                    purchaseInfo.setGoodsRest(rests);
+
                     // The requested goods are available for sale. Reply with proposal.
                     reply.setPerformative(ACLMessage.PROPOSE);
                     reply.setContent(jsonSerializer.exclude("*.class").serialize(purchaseInfo));
@@ -795,14 +910,25 @@ public class Customer extends Agent {
             return  purchaseDescription;
         }
 
-        public Set<AID> getBuyers() {
-            Set<AID> buyers = new HashSet<>();
+        public HashSet<AID> getBuyers() {
+            HashSet<AID> buyers = new HashSet<>();
             demandTable.forEach((good, demand) -> buyers.addAll(demand.getBuyers()));
             return buyers;
         }
 
-        public Set<AID> getSuppliers() {
-            Set<AID> suppliers = new HashSet<>();
+        public HashMap<String, Integer> getBuyerGoods(AID buyer) {
+            HashMap<String, Integer> goodsMap = new HashMap<>();
+            demandTable.forEach((good, demand) -> {
+                final Integer count = demand.remove(buyer);
+                if (count != null) {
+                    goodsMap.put(good, count);
+                }
+            });
+            return goodsMap;
+        }
+
+        public HashSet<AID> getSuppliers() {
+            HashSet<AID> suppliers = new HashSet<>();
             purchaseTable.forEach((good, purchase) -> suppliers.add(purchase.getSupplier()));
             return suppliers;
         }
@@ -865,6 +991,17 @@ public class Customer extends Agent {
             return true;
         }
 
+        public int getRest(String name) {
+            final PurchaseProposal purchaseProposal = purchaseTable.get(name);
+            int minimalQuantity = purchaseProposal.getMinimalQuantity();
+            DemandTable demand = demandTable.get(name);
+            if (demand == null) {
+                return 0;
+            }
+            int totalDemand = demand.getTotal();
+            return minimalQuantity - totalDemand;
+        }
+
         private enum PurchaseState {
             NONE, OPEN, CLOSED
         }
@@ -908,6 +1045,14 @@ public class Customer extends Agent {
 
             public Set<AID> getBuyers() {
                 return demand.keySet();
+            }
+
+            public Integer getCount(AID buyer) {
+                return demand.getOrDefault(buyer,0);
+            }
+
+            public Integer remove(AID buyer) {
+                return demand.remove(buyer);
             }
         }
     }

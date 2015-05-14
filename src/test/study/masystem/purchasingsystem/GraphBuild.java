@@ -5,6 +5,8 @@ import com.mxgraph.model.mxICell;
 import com.mxgraph.swing.mxGraphComponent;
 import com.mxgraph.util.mxConstants;
 import com.mxgraph.view.mxGraph;
+import flexjson.JSONDeserializer;
+import flexjson.JSONSerializer;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.FloydWarshallShortestPaths;
 import org.jgrapht.ext.JGraphXAdapter;
@@ -16,6 +18,7 @@ import study.masystems.purchasingsystem.jgrapht.WeightedEdge;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
 
@@ -38,8 +41,7 @@ public class GraphBuild {
         final UndirectedWeightedGraphBuilderBase<
                 Integer,
                 WeightedEdge,
-                ? extends SimpleWeightedGraph<Integer,
-                        WeightedEdge>,
+                ? extends SimpleWeightedGraph<Integer, WeightedEdge>,
                 ?> builder = SimpleWeightedGraph.builder(WeightedEdge.class);
 
         for (int i = 0; i < vertices_count; i++) {
@@ -79,6 +81,15 @@ public class GraphBuild {
         }
         graph.setCellStyles(mxConstants.STYLE_STROKECOLOR, "green", cells);
         graphComponent.refresh();
+
+        java.util.List<Integer> vertices = new ArrayList<>(edgeList.size() + 1);
+        vertices.add(shortestPath.getStartVertex());
+        edgeList.forEach(weightedEdge -> vertices.add(simpleWeightedGraph.getEdgeTarget(weightedEdge)));
+        JSONSerializer jsonSerializer = new JSONSerializer().exclude("*.class");
+        final String verticesJSON = jsonSerializer.serialize(vertices);
+
+        JSONDeserializer<ArrayList<Integer>> jsonDeserializer = new JSONDeserializer<>();
+        final ArrayList<Integer> integerArrayList = jsonDeserializer.deserialize(verticesJSON);
     }
     
    /* private static JFrame createFrame() {
@@ -86,7 +97,7 @@ public class GraphBuild {
         jFrame.setTitle("JGraphT Adapter to JGraph Demo");
         jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         jFrame.pack();
-        jFrame.setSize(400,300);
+        jFrame.setSize(400, 300);
         return jFrame;
     }
 
@@ -94,7 +105,7 @@ public class GraphBuild {
         JFrame jFrame = createFrame();
         jFrame.getContentPane().add(graphComponent, BorderLayout.CENTER);
         final Rectangle bounds = jFrame.getBounds();
-        mxOrganicLayout organicLayout = new mxOrganicLayout(graph, new Rectangle2D.Double(100, 100, 100, 100));
+        mxOrganicLayout organicLayout = new mxOrganicLayout(graph, bounds);
         organicLayout.execute(graph.getDefaultParent());
         jFrame.setVisible(true);
     }

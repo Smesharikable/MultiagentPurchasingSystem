@@ -7,6 +7,8 @@
       }
     },
     "money":100,
+    "source":1,
+    "target":15,
     "class":"study.masystems.purchasingsystem.agents.Buyer"
   },
 
@@ -18,6 +20,8 @@
       }
     },
     "money":100,
+    "source":11,
+    "target":13,
     "class":"study.masystems.purchasingsystem.agents.Buyer"
   },
 
@@ -29,6 +33,8 @@
       }
     },
     "money":100,
+    "source":19,
+    "target":6,
     "class":"study.masystems.purchasingsystem.agents.Buyer"
   },
 
@@ -44,6 +50,7 @@
       }
     },
     "money":200,
+    "position":9,
     "class":"study.masystems.purchasingsystem.agents.Customer"
   },
 
